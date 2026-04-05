@@ -32,8 +32,8 @@
         .notif-error { background: #c0392b; animation: shake 0.4s; }
         .modal-box { display: none; background: var(--card-bg); padding: 20px; border-radius: 8px; margin-top: 15px; border: 2px solid var(--border-color); transition: background 0.3s; }
         
-        /* Fjernet standard blå kant - den sættes nu dynamisk! */
         .prop-item { background: var(--card-bg); padding: 15px; border-radius: 6px; margin-bottom: 10px; text-align: left; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-top: 1px solid var(--border-color); border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); }
+        .prop-mortgaged { border-left: 5px solid #95a5a6; background: var(--prop-mortgaged-bg); color: var(--text-muted); }
         
         .center-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--card-bg); padding: 30px; border-radius: 16px; z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.5); width: 90%; max-width: 350px; text-align: center; display: none; }
         #offerModal { border: 4px solid #f1c40f; }
@@ -57,6 +57,10 @@
         .terminal-declined { background: #c0392b !important; }
         .terminal-write { background: #8e44ad !important; }
         .nfc-icon { font-size: 100px; margin: 20px 0; animation: pulse 2s infinite; }
+        
+        /* NYT: ADMIN SCREENSAVER */
+        #adminScreensaver { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); z-index: 2500; display: none; flex-direction: column; align-items: center; padding: 40px; box-sizing: border-box; overflow-y: auto; transition: background 0.3s; }
+        
         @keyframes pulse { 0% { transform: scale(0.95); opacity: 0.8; } 50% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0.95); opacity: 0.8; } }
         @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
         @keyframes popIn { 0% { transform: translate(-50%, -40%) scale(0.8); opacity: 0;} 100% { transform: translate(-50%, -50%) scale(1); opacity: 1;} }
@@ -74,6 +78,8 @@
         <h2 id="terminalAmount" style="font-size: 60px; margin: 0; color: #f1c40f; display: none;">0 kr.</h2>
         <p id="terminalMessage" style="font-size: 20px; font-weight: bold; margin-top: 10px;"></p>
     </div>
+
+    <div id="adminScreensaver"></div>
 
     <div id="leaderboardOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(44, 62, 80, 0.98); color: white; z-index: 3000; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
         <h1 style="font-size: 50px; margin-bottom: 10px; color: #f1c40f;">🛑 SPILLET ER SLUT!</h1>
@@ -286,25 +292,23 @@
 
         // Terminal Variabler
         let isTerminalMode = false;
-        let pendingTerminalAmount = 0;
-        let ndef = null;
-        let terminalWriteMode = false;
-        let terminalWritePlayerId = "";
+        let terminalState = "idle"; // 'idle' | 'bank' | 'offer' | 'rent' | 'write'
+        let terminalExpectedId = "";
+        let terminalPayload = {};
 
         const formatMoney = (amount) => new Intl.NumberFormat('da-DK').format(amount) + " kr.";
 
-        // --- NYT: FARVER OG RÆKKEFØLGE TIL GRUNDE ---
         const propColors = {
-            "Rødovrevej": "#3498db", "Hvidovrevej": "#3498db", // Blå
-            "Roskildevej": "#e67e22", "Valby Langgade": "#e67e22", "Allégade": "#e67e22", // Orange
-            "Frederiksberg Allé": "#2ecc71", "Bülowsvej": "#2ecc71", "Gammel Kongevej": "#2ecc71", // Grøn
-            "Bernstorffsvej": "#95a5a6", "Hellerupvej": "#95a5a6", "Strandvejen": "#95a5a6", // Grå
-            "Trianglen": "#e74c3c", "Østerbrogade": "#e74c3c", "Grønningen": "#e74c3c", // Rød
-            "Bredgade": "#bdc3c7", "Kongens Nytorv": "#bdc3c7", "Østergade": "#bdc3c7", // Hvid (lysegrå border)
-            "Amagertorv": "#f1c40f", "Vimmelskaftet": "#f1c40f", "Nygade": "#f1c40f", // Gul
-            "Frederiksberggade": "#8e44ad", "Rådhuspladsen": "#8e44ad", // Lilla
-            "D.F.D.S.": "#34495e", "Ø.K.": "#34495e", "Bornholm": "#34495e", "Mols-Linien": "#34495e", // Rederier
-            "Tuborg": "#16a085", "Carlsberg": "#16a085" // Bryggerier
+            "Rødovrevej": "#3498db", "Hvidovrevej": "#3498db", 
+            "Roskildevej": "#e67e22", "Valby Langgade": "#e67e22", "Allégade": "#e67e22", 
+            "Frederiksberg Allé": "#2ecc71", "Bülowsvej": "#2ecc71", "Gammel Kongevej": "#2ecc71", 
+            "Bernstorffsvej": "#95a5a6", "Hellerupvej": "#95a5a6", "Strandvejen": "#95a5a6", 
+            "Trianglen": "#e74c3c", "Østerbrogade": "#e74c3c", "Grønningen": "#e74c3c", 
+            "Bredgade": "#bdc3c7", "Kongens Nytorv": "#bdc3c7", "Østergade": "#bdc3c7", 
+            "Amagertorv": "#f1c40f", "Vimmelskaftet": "#f1c40f", "Nygade": "#f1c40f", 
+            "Frederiksberggade": "#8e44ad", "Rådhuspladsen": "#8e44ad", 
+            "D.F.D.S.": "#34495e", "Ø.K.": "#34495e", "Bornholm": "#34495e", "Mols-Linien": "#34495e", 
+            "Tuborg": "#16a085", "Carlsberg": "#16a085" 
         };
         const propOrder = Object.keys(propColors);
 
@@ -314,8 +318,7 @@
         function playSound(type) {
             if (!audioCtx) return;
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
+            const osc = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
             osc.connect(gainNode); gainNode.connect(audioCtx.destination);
             const now = audioCtx.currentTime;
             
@@ -333,17 +336,62 @@
             }
         }
 
+        // --- NYT: ADMIN SCREENSAVER LOGIK ---
+        let adminIdleTimer;
+        function resetAdminIdle() {
+            if (!isHost) return;
+            clearTimeout(adminIdleTimer);
+            document.getElementById('adminScreensaver').style.display = 'none';
+            // Start screensaver efter 30 sekunder (30000 ms) uden aktivitet
+            adminIdleTimer = setTimeout(showAdminScreensaver, 30000);
+        }
+        
+        // Nulstil timer når der sker noget på admin skærmen
+        window.addEventListener('mousemove', resetAdminIdle);
+        window.addEventListener('touchstart', resetAdminIdle);
+        window.addEventListener('keypress', resetAdminIdle);
+
+        function showAdminScreensaver() {
+            if(!isHost || !myGameId || isTerminalMode) return;
+            const ss = document.getElementById('adminScreensaver');
+            
+            let html = '<h1 style="color:var(--text-color); margin-bottom: 30px; font-size: 40px;">🏦 Status Overblik</h1><div style="display:flex; flex-wrap:wrap; gap:20px; justify-content:center; width: 100%; max-width: 1200px;">';
+
+            allPlayers.forEach(p => {
+                if(p.is_bankrupt) return;
+                let pProps = allProperties.filter(prop => prop.owner_id === p.id);
+                pProps.sort((a, b) => propOrder.indexOf(a.name) - propOrder.indexOf(b.name));
+
+                html += `<div style="background: var(--card-bg); padding: 20px; border-radius: 12px; width: 280px; text-align: left; border: 2px solid var(--border-color); box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                    <h2 style="margin:0 0 10px 0; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; font-size: 24px;">👤 ${p.name} <br><span style="color:#2ecc71; font-size: 20px;">${formatMoney(p.balance)}</span></h2>
+                    <div style="font-size:16px; max-height: 300px; overflow-y:auto; padding-right: 5px;">`;
+
+                if(pProps.length === 0) html += `<p style="color:var(--text-muted); font-style:italic;">Ingen grunde</p>`;
+                pProps.forEach(prop => {
+                    let propColor = propColors[prop.name] || '#2980b9';
+                    let h = prop.houses >= 5 ? "🏨" : "🏠".repeat(prop.houses);
+                    let m = prop.is_mortgaged ? " (Pantsat)" : "";
+                    let c = prop.is_mortgaged ? "color: var(--text-muted);" : "color: var(--text-color); font-weight: bold;";
+                    html += `<div style="border-left: 6px solid ${prop.is_mortgaged ? '#95a5a6' : propColor}; padding-left: 8px; margin-bottom: 8px; ${c}">${prop.name} ${h}${m}</div>`;
+                });
+                html += `</div></div>`;
+            });
+            html += '</div><p style="margin-top:40px; color:var(--text-muted); font-size: 20px; animation: pulse 2s infinite;">Berør skærmen for at vende tilbage...</p>';
+            
+            ss.innerHTML = html;
+            ss.style.display = 'flex';
+        }
+
         function toggleDarkMode() {
-            document.body.classList.toggle('dark-mode');
-            const isDark = document.body.classList.contains('dark-mode');
-            localStorage.setItem('matador_darkmode', isDark);
-            document.getElementById('themeToggle').innerText = isDark ? '☀️' : '🌙';
+            document.body.classList.toggle('dark-mode'); const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('matador_darkmode', isDark); document.getElementById('themeToggle').innerText = isDark ? '☀️' : '🌙';
         }
         if (localStorage.getItem('matador_darkmode') === 'true') { document.body.classList.add('dark-mode'); document.getElementById('themeToggle').innerText = '☀️'; }
 
         window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search); const pinParam = urlParams.get('pin');
             if (pinParam) { document.getElementById("pinInput").value = pinParam; document.getElementById("nameInput").focus(); }
+            resetAdminIdle();
         };
 
         function forceReset() { localStorage.clear(); window.location.href = window.location.pathname; }
@@ -371,6 +419,20 @@
         function renderInitialLogs(logs) {
             document.getElementById("adminActivityLog").innerHTML = ""; document.getElementById("playerActivityLog").innerHTML = "";
             if (logs && logs.length > 0) { logs.forEach(msg => appendLog(msg)); }
+        }
+
+        function updateTerminalUI(screenClass, statusText, icon, msgText, amount = 0) {
+            const screen = document.getElementById("terminalScreen");
+            screen.className = screenClass;
+            document.getElementById("terminalStatus").innerText = statusText;
+            document.getElementById("terminalIcon").innerText = icon;
+            document.getElementById("terminalMessage").innerText = msgText;
+            if (amount > 0) {
+                document.getElementById("terminalAmount").innerText = formatMoney(amount);
+                document.getElementById("terminalAmount").style.display = "block";
+            } else {
+                document.getElementById("terminalAmount").style.display = "none";
+            }
         }
 
         function connectWebSocket() {
@@ -408,6 +470,7 @@
                     const joinUrl = `https://matador.bennetsen.dk/?pin=${data.pin}`;
                     document.getElementById("qrCodeImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(joinUrl)}`;
                     document.getElementById("qrCodeImage").style.display = "inline-block";
+                    resetAdminIdle();
                 }
 
                 if (data.event === "join_success") {
@@ -420,41 +483,90 @@
                     myGameId = data.game_id; document.getElementById("terminalScreen").style.display = "flex"; startNfcReader();
                 }
 
+                // --- OMNI-CHANNEL TERMINAL LOGIK ---
+                
+                // 1. Skrive Mode
                 if (data.event === "terminal_write_mode" && isTerminalMode && data.game_id === myGameId) {
-                    terminalWriteMode = true; terminalWritePlayerId = data.player_id; playSound('cash'); 
-                    const screen = document.getElementById("terminalScreen"); screen.className = "terminal-write";
-                    document.getElementById("terminalStatus").innerText = "Klar til at kode kort!"; document.getElementById("terminalAmount").style.display = "none";
-                    document.getElementById("terminalMessage").innerText = `Læg et blankt kort på for at koble det til ${data.player_name}`; document.getElementById("terminalIcon").innerText = "🔮";
+                    terminalState = "write"; terminalExpectedId = data.player_id; playSound('cash'); 
+                    updateTerminalUI("terminal-write", "Klar til at kode kort!", "🔮", `Læg et blankt kort på for at koble det til ${data.player_name}`);
                 }
 
+                // 2. Bank Regning
                 if (data.event === "terminal_activated" && isTerminalMode && data.game_id === myGameId) {
-                    pendingTerminalAmount = data.amount; terminalWriteMode = false; playSound('cash');
-                    const screen = document.getElementById("terminalScreen"); screen.className = "terminal-ready";
-                    document.getElementById("terminalStatus").innerText = "Afventer Dankort..."; document.getElementById("terminalAmount").innerText = formatMoney(data.amount); document.getElementById("terminalAmount").style.display = "block";
-                    document.getElementById("terminalMessage").innerText = data.message; document.getElementById("terminalIcon").innerText = "💳";
+                    terminalState = "bank"; terminalPayload = data; playSound('cash');
+                    updateTerminalUI("terminal-ready", "Afventer Dankort...", "💳", data.message, data.amount);
                 }
 
-                if (data.event === "terminal_result" && isTerminalMode && data.game_id === myGameId) {
-                    const screen = document.getElementById("terminalScreen");
-                    if (data.status === "approved") {
-                        playSound('cash'); triggerConfetti(); screen.className = "terminal-approved";
-                        document.getElementById("terminalStatus").innerText = "GODKENDT"; document.getElementById("terminalIcon").innerText = "✅"; document.getElementById("terminalMessage").innerText = `${data.player_name} betalte ${formatMoney(data.amount)}`;
-                    } else {
-                        playSound('error'); screen.className = "terminal-declined";
-                        document.getElementById("terminalStatus").innerText = "AFVIST"; document.getElementById("terminalIcon").innerText = "❌"; document.getElementById("terminalMessage").innerText = data.message;
+                // 3. Modtager et ejendoms-tilbud
+                if (data.event === "property_offered" && data.game_id === myGameId) {
+                    if (isTerminalMode) {
+                        terminalState = "offer"; terminalExpectedId = data.buyer_id; terminalPayload = data; playSound('cash');
+                        updateTerminalUI("terminal-ready", "Nyt Tilbud!", "🏡", `${data.buyer_name} køber ${data.property_name}.\nLæg dit kort på for at godkende!`, data.price);
                     }
-                    setTimeout(() => {
-                        screen.className = ""; document.getElementById("terminalStatus").innerText = "Venter på Banken..."; document.getElementById("terminalAmount").style.display = "none";
-                        document.getElementById("terminalMessage").innerText = ""; document.getElementById("terminalIcon").innerText = "💳"; pendingTerminalAmount = 0;
-                    }, 5000);
+                    if (!isHost && data.buyer_id === myPlayerId) {
+                        pendingOffer = data;
+                        document.getElementById("offerTitle").innerText = (data.seller_id === "bank" || !data.seller_id) ? "🏦 Banken tilbyder!" : `🤝 ${data.seller_name} tilbyder!`;
+                        document.getElementById("offerPropName").innerText = data.property_name; document.getElementById("offerPropPrice").innerText = formatMoney(data.price);
+                        document.getElementById("modalOverlay").style.display = "block"; document.getElementById("offerModal").style.display = "block";
+                    }
                 }
 
+                // 4. Modtager et Husleje-krav
+                if (data.event === "rent_demanded" && data.game_id === myGameId) {
+                    if (isTerminalMode) {
+                        terminalState = "rent"; terminalExpectedId = data.target_id; terminalPayload = data; playSound('cash');
+                        updateTerminalUI("terminal-ready", "Husleje!", "💸", `Læg dit kort på for at betale husleje til ${data.owner_name}`, data.amount);
+                    }
+                    if (!isHost && data.target_id === myPlayerId) {
+                        pendingRent = data; document.getElementById("rentDesc").innerText = `Du er landet på ${data.owner_name}s grund!`;
+                        document.getElementById("rentPropName").innerText = data.property_name; document.getElementById("rentAmount").innerText = formatMoney(data.amount);
+                        document.getElementById("modalOverlay").style.display = "block"; document.getElementById("rentModal").style.display = "block";
+                    }
+                }
+
+                // --- OMNI-CHANNEL LUKNING AF MODALS & TERMINAL ---
+                
+                // Når en Ejendom er købt (enten via telefon eller terminal)
+                if (data.event === "property_bought_success" && data.game_id === myGameId) {
+                    if (isTerminalMode && terminalState === "offer" && terminalPayload.property_name === data.property_name) {
+                        playSound('cash'); updateTerminalUI("terminal-approved", "GODKENDT", "✅", `Køb af ${data.property_name} gennemført!`);
+                        setTimeout(() => { if(terminalState==="offer") { terminalState="idle"; updateTerminalUI("", "Venter på Banken...", "💳", ""); } }, 4000);
+                    }
+                    if (!isHost && data.buyer_id === myPlayerId) { 
+                        if(pendingOffer && pendingOffer.property_name === data.property_name) declineOffer(); // Lukker mobil-modal
+                        playSound('cash'); triggerConfetti(); showNotification("playerNotif", `🎉 Tillykke! Du ejer nu ${data.property_name}`, "success"); 
+                    }
+                }
+
+                // Når en Husleje er betalt (telefon eller terminal)
+                if (data.event === "rent_paid_success" && data.game_id === myGameId) {
+                    if (isTerminalMode && terminalState === "rent") {
+                        playSound('cash'); updateTerminalUI("terminal-approved", "GODKENDT", "✅", `Huslejen er betalt!`);
+                        setTimeout(() => { if(terminalState==="rent") { terminalState="idle"; updateTerminalUI("", "Venter på Banken...", "💳", ""); } }, 4000);
+                    }
+                    if (!isHost && data.from_id === myPlayerId) {
+                        if(pendingRent) { document.getElementById("modalOverlay").style.display = "none"; document.getElementById("rentModal").style.display = "none"; pendingRent = null; }
+                    }
+                }
+
+                // Standard Terminal Betalings Resultat
+                if (data.event === "terminal_result" && isTerminalMode && data.game_id === myGameId) {
+                    if (data.status === "approved") {
+                        playSound('cash'); triggerConfetti(); updateTerminalUI("terminal-approved", "GODKENDT", "✅", `${data.player_name} betalte beløbet.`);
+                    } else {
+                        playSound('error'); updateTerminalUI("terminal-declined", "AFVIST", "❌", data.message);
+                    }
+                    setTimeout(() => { terminalState="idle"; updateTerminalUI("", "Venter på Banken...", "💳", ""); }, 4000);
+                }
+
+
+                // Gamle Logik Blokke
                 if (data.event === "player_joined" && isHost && data.game_id === myGameId) {
                     allPlayers.push({id: data.player_id, name: data.player_name, balance: 30000, in_jail: false, is_bankrupt: false}); renderLobbyList();
                 }
 
                 if (data.event === "game_started" || data.event === "reconnect_success") {
-                    if (data.event === "reconnect_success") { myGameId = data.game_id; myPlayerId = data.player_id; isHost = data.is_host; }
+                    if (data.event === "reconnect_success") { myGameId = data.game_id; myPlayerId = data.player_id; isHost = data.is_host; resetAdminIdle(); }
                     if (data.game_id === myGameId && !isTerminalMode) {
                         allPlayers = data.players; allProperties = data.properties || [];
                         if (data.status === "active" || data.event === "game_started") { setupActiveGameScreens(); renderInitialLogs(data.logs); } 
@@ -463,14 +575,8 @@
                 }
 
                 if (data.event === "new_log" && data.game_id === myGameId) { appendLog(data.message); }
-
-                if (data.event === "pool_updated" && data.game_id === myGameId) {
-                    document.querySelectorAll(".poolAmount").forEach(el => el.innerText = formatMoney(data.pool)); document.querySelectorAll(".pool-banner").forEach(el => el.style.display = "block");
-                }
-                
-                if (data.event === "pool_won" && data.game_id === myGameId && data.target_id === myPlayerId) {
-                    playSound('cash'); triggerConfetti(); triggerConfetti(); showNotification("playerNotif", `🚗 TILLYKKE! Du vandt Bødekassen på ${formatMoney(data.amount)}!`, "success");
-                }
+                if (data.event === "pool_updated" && data.game_id === myGameId) { document.querySelectorAll(".poolAmount").forEach(el => el.innerText = formatMoney(data.pool)); document.querySelectorAll(".pool-banner").forEach(el => el.style.display = "block"); }
+                if (data.event === "pool_won" && data.game_id === myGameId && data.target_id === myPlayerId) { playSound('cash'); triggerConfetti(); triggerConfetti(); showNotification("playerNotif", `🚗 TILLYKKE! Du vandt Bødekassen på ${formatMoney(data.amount)}!`, "success"); }
 
                 if (data.event === "game_ended" && data.game_id === myGameId && !isTerminalMode) {
                     playSound('cash'); document.getElementById("lbWinner").innerText = data.winner;
@@ -497,29 +603,7 @@
                 }
 
                 if (data.event === "players_updated" && data.game_id === myGameId && !isTerminalMode) { allPlayers = data.players; setupActiveGameScreens(); }
-
-                if (data.event === "property_offered" && data.game_id === myGameId && !isTerminalMode) {
-                    if (!isHost && data.buyer_id === myPlayerId) {
-                        pendingOffer = data;
-                        document.getElementById("offerTitle").innerText = (data.seller_id === "bank" || !data.seller_id) ? "🏦 Banken tilbyder!" : `🤝 ${data.seller_name} tilbyder!`;
-                        document.getElementById("offerPropName").innerText = data.property_name; document.getElementById("offerPropPrice").innerText = formatMoney(data.price);
-                        document.getElementById("modalOverlay").style.display = "block"; document.getElementById("offerModal").style.display = "block";
-                    }
-                }
-
-                if (data.event === "property_bought_success" && data.game_id === myGameId && !isTerminalMode) {
-                    if (!isHost && data.buyer_id === myPlayerId) { playSound('cash'); triggerConfetti(); showNotification("playerNotif", `🎉 Tillykke! Du ejer nu ${data.property_name}`, "success"); }
-                }
-
                 if (data.event === "properties_updated" && data.game_id === myGameId && !isTerminalMode) { allProperties = data.properties; renderProperties(); }
-
-                if (data.event === "rent_demanded" && data.game_id === myGameId && !isTerminalMode) {
-                    if (!isHost && data.target_id === myPlayerId) {
-                        pendingRent = data; document.getElementById("rentDesc").innerText = `Du er landet på ${data.owner_name}s grund!`;
-                        document.getElementById("rentPropName").innerText = data.property_name; document.getElementById("rentAmount").innerText = formatMoney(data.amount);
-                        document.getElementById("modalOverlay").style.display = "block"; document.getElementById("rentModal").style.display = "block";
-                    }
-                }
 
                 if (data.event === "chance_card_drawn" && data.game_id === myGameId && !isTerminalMode) {
                     if (!isHost && data.target_id === myPlayerId) {
@@ -543,39 +627,57 @@
         }
         connectWebSocket();
 
+        // --- NFC SCANNER ENGINE ---
         function joinAsTerminal() {
             const pin = document.getElementById("pinInput").value.trim();
             if (pin.length !== 4) { playSound('error'); return alert("Indtast spillets 4-cifrede PIN kode først."); }
-            if (!("NDEFReader" in window)) { alert("Desværre! Din browser/telefon understøtter ikke Web NFC. Brug Chrome på en Android telefon."); return; }
+            if (!("NDEFReader" in window)) { alert("Din browser understøtter ikke Web NFC. Brug Chrome på en Android."); return; }
             initAudio(); isTerminalMode = true; socket.send(JSON.stringify({ action: "join_terminal", data: { pin: pin } }));
         }
 
         async function startNfcReader() {
             try {
                 ndef = new NDEFReader(); await ndef.scan(); console.log("NFC Scanner aktiv...");
-                ndef.addEventListener("reading", async ({ message, serialNumber }) => {
-                    if (terminalWriteMode) {
+                ndef.addEventListener("reading", async ({ message }) => {
+                    if (terminalState === "idle") return; // Læs ikke kort, hvis der ikke er en regning åben
+
+                    if (terminalState === "write") {
                         try {
                             const playerName = document.getElementById("terminalMessage").innerText.split("til ")[1];
-                            await ndef.write(terminalWritePlayerId);
+                            await ndef.write(terminalExpectedId);
                             playSound('cash');
                             socket.send(JSON.stringify({ action: "terminal_write_success", data: { game_id: myGameId, player_name: playerName } }));
-                            terminalWriteMode = false; terminalWritePlayerId = "";
-                            
-                            const screen = document.getElementById("terminalScreen"); screen.className = "terminal-approved";
-                            document.getElementById("terminalStatus").innerText = "KORT KODET!"; document.getElementById("terminalIcon").innerText = "✅"; document.getElementById("terminalMessage").innerText = `Kortet tilhører nu ${playerName}`;
-                            setTimeout(() => { screen.className = ""; document.getElementById("terminalStatus").innerText = "Venter på Banken..."; document.getElementById("terminalMessage").innerText = ""; document.getElementById("terminalIcon").innerText = "💳"; }, 4000);
+                            terminalState = "idle"; terminalExpectedId = "";
+                            updateTerminalUI("terminal-approved", "KORT KODET!", "✅", `Kortet tilhører nu ${playerName}`);
+                            setTimeout(() => { if(terminalState==="idle") updateTerminalUI("", "Venter på Banken...", "💳", ""); }, 4000);
                         } catch (error) { playSound('error'); alert("Kunne ikke skrive til kortet. Prøv igen."); }
                         return; 
                     }
 
-                    if (pendingTerminalAmount > 0) {
-                        const decoder = new TextDecoder();
-                        for (const record of message.records) {
-                            const playerId = decoder.decode(record.data);
-                            socket.send(JSON.stringify({ action: "terminal_payment", data: { game_id: myGameId, player_id: playerId, amount: pendingTerminalAmount } }));
-                            pendingTerminalAmount = 0;
+                    // Aflæs ID for betalinger
+                    const decoder = new TextDecoder();
+                    let scannedId = "";
+                    for (const record of message.records) { scannedId = decoder.decode(record.data); }
+
+                    if (terminalState === "offer") {
+                        if (scannedId === terminalExpectedId) {
+                            // Det er den rigtige persons kort!
+                            socket.send(JSON.stringify({ action: "accept_property", data: terminalPayload }));
+                        } else {
+                            playSound('error'); updateTerminalUI("terminal-declined", "AFVIST", "❌", "Forkert Dankort! Brug det rigtige kort.");
+                            setTimeout(() => { if(terminalState==="offer") updateTerminalUI("terminal-ready", "Nyt Tilbud!", "🏡", document.getElementById("terminalMessage").innerText, terminalPayload.price); }, 3000);
                         }
+                    } 
+                    else if (terminalState === "rent") {
+                        if (scannedId === terminalExpectedId) {
+                            socket.send(JSON.stringify({ action: "pay_rent", data: { game_id: myGameId, from_id: scannedId, to_id: terminalPayload.owner_id, amount: terminalPayload.amount } }));
+                        } else {
+                            playSound('error'); updateTerminalUI("terminal-declined", "AFVIST", "❌", "Forkert Dankort! Dette er ikke din husleje.");
+                            setTimeout(() => { if(terminalState==="rent") updateTerminalUI("terminal-ready", "Husleje!", "💸", document.getElementById("terminalMessage").innerText, terminalPayload.amount); }, 3000);
+                        }
+                    }
+                    else if (terminalState === "bank") {
+                        socket.send(JSON.stringify({ action: "terminal_payment", data: { game_id: myGameId, player_id: scannedId, amount: terminalPayload.amount } }));
                     }
                 });
             } catch (error) { alert("NFC Scanner fejlede: " + error); }
@@ -608,32 +710,27 @@
 
         function renderProperties() {
             if (isHost) {
-                // Sorter også drop-down menuen for Banken!
                 let sortedProps = [...allProperties].sort((a, b) => propOrder.indexOf(a.name) - propOrder.indexOf(b.name));
                 const propSelect = document.getElementById("adminPropSelect"); propSelect.innerHTML = '<option value="">-- Vælg Grund --</option>';
                 sortedProps.forEach(prop => { if (prop.owner_id === "") propSelect.innerHTML += `<option value="${prop.name}">${prop.name}</option>`; });
                 updateAdminPropPrice();
             } else {
                 const myList = document.getElementById("myPropertiesList"); myList.innerHTML = ""; let hasProps = false;
-                
-                // NYT: Sorter spillers grunde efter farve
                 let myProps = allProperties.filter(p => p.owner_id === myPlayerId);
                 myProps.sort((a, b) => propOrder.indexOf(a.name) - propOrder.indexOf(b.name));
 
                 myProps.forEach(prop => {
-                    hasProps = true; let buttonsHTML = ""; 
-                    let cssClass = "prop-item";
+                    hasProps = true; let buttonsHTML = ""; let cssClass = "prop-item";
                     let housesDisplay = "";
                     if (prop.houses >= 5) housesDisplay = " 🏨"; else if (prop.houses > 0) housesDisplay = " " + "🏠".repeat(prop.houses);
                     let title = `📜 <b style="font-size: 18px;">${prop.name}${housesDisplay}</b><br><span style="font-size: 14px; font-weight: normal; color: var(--text-muted);">Nypris: ${prop.price} kr.</span>`;
 
-                    // NYT: Tilføj den flotte dynamiske farve til venstre kant
                     let propColor = propColors[prop.name] || '#2980b9';
                     let inlineStyle = `border-left: 5px solid ${propColor};`;
 
                     if (prop.is_mortgaged) {
                         cssClass += " prop-mortgaged"; title = `🛑 <b>${prop.name} (Pantsat)</b>`; const cost = parseInt(prop.price * 0.55);
-                        inlineStyle = `border-left: 5px solid #bdc3c7; background: var(--prop-mortgaged-bg);`; // Grå border hvis pantsat
+                        inlineStyle = `border-left: 5px solid #bdc3c7; background: var(--prop-mortgaged-bg);`;
                         buttonsHTML = `<button class="btn btn-small" style="background: #27ae60;" onclick="unmortgageProp('${prop.name}')">Køb fri (-${cost} kr.)</button>`;
                     } else {
                         const payout = prop.price / 2;
@@ -685,44 +782,8 @@
             }
         }
 
-        function showNotification(elId, txt, type) { const el = document.getElementById(elId); el.innerText = txt; el.style.display = "block"; setTimeout(() => el.style.display = "none", 4000); }
-        
-        function getHistory() { initAudio(); socket.send(JSON.stringify({ action: "get_history", data: {} })); }
-        function createGame() { initAudio(); socket.send(JSON.stringify({ action: "create_game", data: {} })); }
-        function joinGame() { 
-            initAudio(); const pin = document.getElementById("pinInput").value.trim(); const name = document.getElementById("nameInput").value.trim(); 
-            if (pin.length !== 4 || name === "") { playSound('error'); return alert("Udfyld alt."); }
-            socket.send(JSON.stringify({ action: "join_game", data: { pin: pin, name: name } })); 
-        }
-        
-        function startGame() { socket.send(JSON.stringify({ action: "start_game", data: { game_id: myGameId } })); }
-        function giveStartBonus() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) { playSound('error'); return alert("Vælg en spiller først!"); } socket.send(JSON.stringify({ action: "give_pass_start_bonus", data: { game_id: myGameId, player_id: playerId } })); }
-        function sendToJail() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) { playSound('error'); return alert("Vælg en spiller først!"); } socket.send(JSON.stringify({ action: "send_to_jail", data: { game_id: myGameId, player_id: playerId } })); }
-        function payBail() { socket.send(JSON.stringify({ action: "pay_bail", data: { game_id: myGameId, player_id: myPlayerId } })); }
-        
-        function giveJailCard() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) return alert("Vælg en spiller først!"); socket.send(JSON.stringify({ action: "give_jail_card", data: { game_id: myGameId, player_id: playerId } })); }
-        function payoutPool() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) return alert("Vælg spilleren der landede på Gratis Parkering!"); socket.send(JSON.stringify({ action: "payout_pool", data: { game_id: myGameId, player_id: playerId } })); }
-        function useJailCard() { socket.send(JSON.stringify({ action: "use_jail_card", data: { game_id: myGameId, player_id: myPlayerId } })); }
-
-        function toggleModal(modalId) { const modal = document.getElementById(modalId); modal.style.display = modal.style.display === "none" || modal.style.display === "" ? "block" : "none"; }
-        
-        function executeTransfer() {
-            const amount = parseInt(document.getElementById("transferAmount").value); if (isNaN(amount) || amount <= 0) { playSound('error'); return alert("Ugyldigt beløb!"); }
-            socket.send(JSON.stringify({ action: "transfer_money", data: { game_id: myGameId, from_player_id: myPlayerId, to_player_id: document.getElementById("transferToPlayer").value, amount: amount } }));
-            document.getElementById("transferAmount").value = ""; toggleModal('transferModal');
-        }
-        
-        function showScreen(screen) { document.querySelectorAll('.card').forEach(c => c.classList.remove("active-card")); screen.classList.add("active-card"); }
-
-        function sendPropertyOffer() {
-            const propName = document.getElementById("adminPropSelect").value; const playerId = document.getElementById("adminPropPlayerSelect").value;
-            if (!propName || !playerId) { playSound('error'); return alert("Vælg grund og køber!"); } if (selectedPropPrice <= 0) return alert("Fejl med prisen.");
-            socket.send(JSON.stringify({ action: "offer_property", data: { game_id: myGameId, buyer_id: playerId, seller_id: "bank", property_name: propName, price: selectedPropPrice } }));
-            document.getElementById("adminPropSelect").value = ""; document.getElementById("adminPropPlayerSelect").value = ""; updateAdminPropPrice(); 
-        }
-
         function declineOffer() { document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none"; pendingOffer = null; }
-        function acceptOffer() { socket.send(JSON.stringify({ action: "accept_property", data: pendingOffer })); document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none"; pendingOffer = null; }
+        function acceptOffer() { socket.send(JSON.stringify({ action: "accept_property", data: pendingOffer })); declineOffer(); }
         function mortgageProp(propName) { if(confirm("Vil du pantsætte " + propName + "?")) { socket.send(JSON.stringify({ action: "mortgage_property", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); } }
         function unmortgageProp(propName) { socket.send(JSON.stringify({ action: "unmortgage_property", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); }
         function openSellModal(propName, originalPrice) { currentSellingProp = propName; document.getElementById("sellPropTitle").innerText = propName; document.getElementById("sellPropOriginalPrice").innerText = originalPrice; document.getElementById("sellPropPrice").value = originalPrice; toggleModal('propertiesModal'); toggleModal('sellPropModal'); }
@@ -748,7 +809,6 @@
         function executePayRent() {
             if (!pendingRent) return;
             socket.send(JSON.stringify({ action: "pay_rent", data: { game_id: myGameId, from_id: myPlayerId, to_id: pendingRent.owner_id, amount: pendingRent.amount } }));
-            document.getElementById("modalOverlay").style.display = "none"; document.getElementById("rentModal").style.display = "none"; pendingRent = null;
         }
 
         function drawChanceCard() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) { playSound('error'); return alert("Vælg en spiller først!"); } socket.send(JSON.stringify({ action: "draw_chance_card", data: { game_id: myGameId, player_id: playerId } })); }

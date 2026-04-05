@@ -239,19 +239,12 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			message, _ := msg.Data["message"].(string)
 			broadcast(map[string]interface{}{"event": "terminal_activated", "game_id": gameID, "amount": int(amountFloat), "message": message})
 
-		// --- NYT: Admin beder terminalen om at gøre klar til at KODE et kort ---
 		case "terminal_write_request":
 			gameID, _ := msg.Data["game_id"].(string)
 			playerID, _ := msg.Data["player_id"].(string)
 			playerName := getPlayerName(playerID)
-			broadcast(map[string]interface{}{
-				"event":       "terminal_write_mode",
-				"game_id":     gameID,
-				"player_id":   playerID,
-				"player_name": playerName,
-			})
+			broadcast(map[string]interface{}{"event": "terminal_write_mode", "game_id": gameID, "player_id": playerID, "player_name": playerName})
 
-		// --- NYT: Terminalen melder tilbage, at kortet nu ER KODET succesfuldt ---
 		case "terminal_write_success":
 			gameID, _ := msg.Data["game_id"].(string)
 			playerName, _ := msg.Data["player_name"].(string)
@@ -493,6 +486,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			db.Exec("UPDATE players SET balance = balance + ? WHERE id = ?", amount, toID)
 			broadcastLog(gameID, fmt.Sprintf("🏠 %s betalte %d kr. i husleje til %s", getPlayerName(fromID), amount, getPlayerName(toID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
+
+			// NYT: Fortæl alle, at denne husleje er betalt (bruges til at lukke mobil-modals og opdatere terminal)
+			broadcast(map[string]interface{}{"event": "rent_paid_success", "game_id": gameID, "from_id": fromID, "to_id": toID})
+
 			conn.WriteJSON(map[string]interface{}{"event": "admin_success", "message": "Husleje betalt!"})
 
 		case "mortgage_property":
@@ -549,7 +546,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		case "offer_property":
 			broadcast(map[string]interface{}{
-				"event": "property_offered", "game_id": msg.Data["game_id"], "buyer_id": msg.Data["buyer_id"],
+				"event": "property_offered", "game_id": msg.Data["game_id"], "buyer_id": msg.Data["buyer_id"], "buyer_name": getPlayerName(msg.Data["buyer_id"].(string)),
 				"seller_id": msg.Data["seller_id"], "seller_name": msg.Data["seller_name"], "property_name": msg.Data["property_name"], "price": msg.Data["price"],
 			})
 
