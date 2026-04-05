@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moderne Matador</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f4f4f9; color: #333; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; width: 100%; max-width: 400px; display: none; max-height: 90vh; overflow-y: auto; position: relative;}
+        .active-card { display: block; }
+        h1 { color: #2c3e50; margin-top: 0; }
+        .btn { background: #27ae60; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; transition: background 0.2s; margin-top: 10px; }
+        .btn:hover { background: #219653; }
+        .btn-secondary { background: #34495e; }
+        .btn-secondary:hover { background: #2c3e50; }
+        .btn-small { padding: 8px 12px; font-size: 14px; margin-top: 5px; width: auto; }
+        input, select { width: 100%; padding: 12px; margin-top: 10px; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box; font-family: inherit; }
+        .pin-display { font-size: 48px; letter-spacing: 8px; color: #e74c3c; font-weight: bold; margin: 20px 0; background: #fdf2f2; padding: 10px; border-radius: 8px; }
+        .player-list { list-style: none; padding: 0; margin-top: 20px; text-align: left;}
+        .player-list li { background: #ecf0f1; padding: 10px; margin-bottom: 8px; border-radius: 6px; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .notification { color: white; padding: 10px; border-radius: 6px; margin-bottom: 15px; display: none; font-weight: bold; }
+        .notif-success { background: #2ecc71; }
+        .notif-error { background: #c0392b; animation: shake 0.4s; }
+
+        .modal-box { display: none; background: #ecf0f1; padding: 20px; border-radius: 8px; margin-top: 15px; border: 2px solid #bdc3c7; }
+        .prop-item { background: white; padding: 15px; border-radius: 6px; border-left: 5px solid #2980b9; margin-bottom: 10px; text-align: left; box-shadow: 0 2px 5px rgba(0,0,0,0.05);}
+        .prop-mortgaged { border-left: 5px solid #95a5a6; background: #fdfdfd; color: #7f8c8d; }
+        
+        /* Modal Overlay & Standard Center Modals */
+        .center-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 16px; z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.3); width: 90%; max-width: 350px; text-align: center; display: none; }
+        #offerModal { border: 4px solid #f1c40f; }
+        #rentModal { border: 4px solid #e74c3c; } /* Husleje Modal */
+        #modalOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 999; display: none; }
+        
+        .price-tag { font-size: 20px; font-weight: bold; color: #27ae60; margin: 5px 0; text-align: center; }
+        #jailBanner { display: none; background: #c0392b; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 20px; text-align: center; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); border: 2px solid #922b21; }
+
+        @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+    <div id="modalOverlay"></div>
+    
+    <div id="offerModal" class="center-modal">
+        <h2 style="margin-top:0; color: #2c3e50;" id="offerTitle">🏦 Banken tilbyder!</h2>
+        <p style="font-size: 18px;">Vil du købe og betale for:</p>
+        <h2 id="offerPropName" style="color: #2980b9; margin: 5px 0;">---</h2>
+        <p style="font-size: 18px;">Pris: <b id="offerPropPrice" style="color: #e74c3c;">---</b></p>
+        <div style="display: flex; gap: 10px; margin-top: 25px;">
+            <button class="btn" style="background: #e74c3c; width: 40%;" onclick="declineOffer()">Afvis</button>
+            <button class="btn" style="background: #2ecc71; width: 60%; font-size: 22px; padding: 15px;" onclick="acceptOffer()">Godkend 💳</button>
+        </div>
+    </div>
+
+    <div id="rentModal" class="center-modal">
+        <h2 style="margin-top:0; color: #c0392b;">🚨 HUSLEJE 🚨</h2>
+        <p style="font-size: 18px;" id="rentDesc">Du er landet på Troels' grund!</p>
+        <h2 id="rentPropName" style="color: #2980b9; margin: 5px 0;">---</h2>
+        <p style="font-size: 18px;">Betal: <b id="rentAmount" style="color: #c0392b; font-size: 24px;">---</b></p>
+        <div style="margin-top: 25px;">
+            <button class="btn" style="background: #c0392b; font-size: 22px; padding: 15px;" onclick="executePayRent()">Betal Nu 💸</button>
+            <p style="font-size: 12px; color: #7f8c8d; margin-top: 10px;">Har du ikke råd? Pantsæt først via menuen under (det lukker ikke denne boks).</p>
+        </div>
+    </div>
+
+    <div class="card active-card" id="startScreen">
+        <h1>🏦 Moderne Matador</h1>
+        <p>Status: <span id="connStatus" style="color: orange;">Forbinder...</span></p>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+        <input type="text" id="pinInput" placeholder="Indtast 4-cifret PIN" maxlength="4" style="text-align: center;">
+        <input type="text" id="nameInput" placeholder="Dit navn (f.eks. Jens)" style="text-align: center;">
+        <button class="btn" onclick="joinGame()" id="joinBtn" disabled>Join Spil</button>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+        <button class="btn btn-secondary" onclick="createGame()" id="createBtn" disabled>Opret Nyt Spil (Admin)</button>
+    </div>
+
+    <div class="card" id="lobbyScreen">
+        <h1>Lobby</h1>
+        <p>PIN-kode:</p>
+        <div class="pin-display" id="pinCode">----</div>
+        <p>Venter på spillere...</p>
+        <ul class="player-list" id="lobbyPlayers"></ul>
+        <button class="btn" onclick="startGame()" style="margin-top: 20px;">Start Spillet!</button>
+    </div>
+
+    <div class="card" id="playerWaitScreen">
+        <h1 id="welcomeText">Velkommen!</h1>
+        <p>Du er nu med i spillet. Kig op på Admin-skærmen!</p>
+    </div>
+
+    <div class="card" id="adminDashboard" style="max-width: 600px;">
+        <h1>🏦 Bank & Admin</h1>
+        <div class="notification notif-success" id="adminNotif"></div>
+        <div class="notification notif-error" id="adminErrorNotif"></div>
+        
+        <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: left;">
+            <h3 style="margin-top: 0;">💵 Spiller Handlinger</h3>
+            <select id="adminPlayerSelect"><option value="">-- Vælg spiller --</option></select>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" style="background: #2980b9; padding: 10px; font-size: 14px;" onclick="giveStartBonus()">Passér Start (+4000)</button>
+                <button class="btn" style="background: #c0392b; padding: 10px; font-size: 14px;" onclick="sendToJail()">Smid i Fængsel</button>
+            </div>
+        </div>
+
+        <div style="background: #fdfae6; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: left; border: 2px solid #f1c40f;">
+            <h3 style="margin-top: 0;">🏡 Sælg Grund (Bank)</h3>
+            <select id="adminPropSelect" onchange="updateAdminPropPrice()"><option value="">-- Vælg Grund --</option></select>
+            <select id="adminPropPlayerSelect"><option value="">-- Vælg Køber --</option></select>
+            <div class="price-tag" id="adminPropPriceDisplay">0 kr.</div>
+            <button class="btn" style="background: #f39c12; padding: 10px; margin-top: 5px; color: #fff;" onclick="sendPropertyOffer()">Send Tilbud 💳</button>
+        </div>
+
+        <h3 style="text-align: left;">Aktuelle Saldi:</h3>
+        <ul class="player-list" id="adminPlayerList"></ul>
+    </div>
+
+    <div class="card" id="playerDashboard">
+        <h1 id="dashboardName">Spiller</h1>
+        
+        <div id="jailBanner"><span class="jail-icon">🚔</span> DU ER I FÆNGSEL!</div>
+        <div class="notification notif-success" id="playerNotif"></div>
+        <div class="notification notif-error" id="playerErrorNotif"></div>
+        
+        <div style="background: #e8f8f5; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="margin:0; color: #16a085;">Din Saldo</h3>
+            <h1 style="margin:5px 0 0 0; font-size: 36px;" id="playerBalance">0 kr.</h1>
+        </div>
+        
+        <button class="btn" id="bailBtn" style="background: #c0392b; margin-bottom: 10px; display: none;" onclick="payBail()">Betal Kaution (1000 kr)</button>
+        <button class="btn" style="background: #f39c12; margin-bottom: 10px;" onclick="toggleModal('transferModal')">Overfør Penge</button>
+        <button class="btn btn-secondary" onclick="toggleModal('propertiesModal')">Dine Grunde</button>
+
+        <div id="transferModal" class="modal-box">
+            <h3 style="margin-top:0;">Ny Overførsel</h3>
+            <select id="transferToPlayer"><option value="bank">🏦 Banken</option></select>
+            <input type="number" id="transferAmount" placeholder="Beløb (f.eks. 5000)">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" style="background: #e74c3c; width: 50%; padding: 10px;" onclick="toggleModal('transferModal')">Afbryd</button>
+                <button class="btn" style="background: #27ae60; width: 50%; padding: 10px;" onclick="executeTransfer()">Send</button>
+            </div>
+        </div>
+
+        <div id="propertiesModal" class="modal-box" style="text-align: left;">
+            <h3 style="margin-top:0;">Dine Skøder</h3>
+            <div id="myPropertiesList"></div>
+            <button class="btn btn-secondary" style="margin-top: 15px; padding: 10px;" onclick="toggleModal('propertiesModal')">Luk</button>
+        </div>
+
+        <div id="sellPropModal" class="modal-box" style="text-align: left;">
+            <h3 style="margin-top:0;">Sælg <span id="sellPropTitle" style="color: #2980b9;"></span></h3>
+            <p style="font-size: 14px; color: #7f8c8d; margin-top: 0;">Nypris: <span id="sellPropOriginalPrice"></span> kr.</p>
+            <select id="sellToPlayer"><option value="">-- Vælg Køber --</option></select>
+            <input type="number" id="sellPropPrice" placeholder="Aftalt Pris">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" style="background: #e74c3c; width: 50%; padding: 10px;" onclick="toggleModal('sellPropModal')">Afbryd</button>
+                <button class="btn" style="background: #27ae60; width: 50%; padding: 10px;" onclick="executePlayerSale()">Send Tilbud 💳</button>
+            </div>
+        </div>
+
+        <div id="demandRentModal" class="modal-box" style="text-align: left;">
+            <h3 style="margin-top:0; color: #c0392b;">Opkræv Husleje for <span id="rentPropTitle"></span></h3>
+            <select id="rentFromPlayer"><option value="">-- Hvem landede på grunden? --</option></select>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" style="background: #e74c3c; width: 50%; padding: 10px;" onclick="toggleModal('demandRentModal')">Afbryd</button>
+                <button class="btn" style="background: #c0392b; width: 50%; padding: 10px;" onclick="executeRentDemand()">Send Regning 💸</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const socket = new WebSocket("ws://localhost:8080/ws");
+        
+        let myGameId = null, myPlayerId = null, isHost = false;
+        let allPlayers = [], allProperties = [];
+        let pendingOffer = null, selectedPropPrice = 0, currentSellingProp = "", currentRentProp = "";
+        let pendingRent = null;
+
+        const formatMoney = (amount) => new Intl.NumberFormat('da-DK').format(amount) + " kr.";
+
+        function triggerConfetti() {
+            const colors = ['#2ecc71', '#f1c40f', '#e74c3c', '#3498db', '#9b59b6'];
+            for (let i = 0; i < 80; i++) {
+                let conf = document.createElement('div');
+                conf.style.position = 'fixed'; conf.style.width = '10px'; conf.style.height = '10px';
+                conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                conf.style.left = Math.random() * 100 + 'vw'; conf.style.top = '-20px';
+                conf.style.zIndex = '9999'; conf.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+                document.body.appendChild(conf);
+                conf.animate([{ transform: `translate3d(0,0,0) rotate(0deg)`, opacity: 1 }, { transform: `translate3d(${Math.random()*300 - 150}px, ${window.innerHeight + 50}px, 0) rotate(${Math.random()*720}deg)`, opacity: 0 }], { duration: Math.random() * 2000 + 1500, easing: 'cubic-bezier(.37,0,.63,1)' }).onfinish = () => conf.remove();
+            }
+        }
+
+        socket.onopen = function() {
+            const savedGameId = localStorage.getItem("matador_gameId");
+            if (savedGameId) {
+                document.getElementById("connStatus").innerText = "Gendanner... 🔄";
+                document.getElementById("connStatus").style.color = "orange";
+                socket.send(JSON.stringify({ action: "reconnect", data: { game_id: savedGameId, player_id: localStorage.getItem("matador_playerId") || "", is_host: localStorage.getItem("matador_isHost") === "true" } }));
+            } else {
+                document.getElementById("connStatus").innerText = "Online 🟢";
+                document.getElementById("connStatus").style.color = "green";
+                document.getElementById("createBtn").disabled = false;
+                document.getElementById("joinBtn").disabled = false;
+            }
+        };
+
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            if (data.event === "game_created") {
+                isHost = true; myGameId = data.game_id;
+                localStorage.setItem("matador_gameId", myGameId); localStorage.setItem("matador_isHost", "true");
+                showScreen(document.getElementById("lobbyScreen")); document.getElementById("pinCode").innerText = data.pin;
+            }
+
+            if (data.event === "join_success") {
+                isHost = false; myGameId = data.game_id; myPlayerId = data.player_id;
+                localStorage.setItem("matador_gameId", myGameId); localStorage.setItem("matador_playerId", myPlayerId); localStorage.setItem("matador_isHost", "false");
+                showScreen(document.getElementById("playerWaitScreen"));
+            }
+
+            if (data.event === "player_joined" && isHost && data.game_id === myGameId) {
+                allPlayers.push({id: data.player_id, name: data.player_name, balance: 30000, in_jail: false});
+                renderLobbyList();
+            }
+
+            if (data.event === "game_started" || data.event === "reconnect_success") {
+                if(data.game_id === myGameId) {
+                    if (data.event === "reconnect_success") { myPlayerId = data.player_id; isHost = data.is_host; }
+                    allPlayers = data.players; allProperties = data.properties || [];
+                    if (data.status === "active" || data.event === "game_started") {
+                        setupActiveGameScreens();
+                    } else if (data.status === "waiting") {
+                        isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen"));
+                        renderLobbyList();
+                    }
+                }
+            }
+
+            if (data.event === "reconnect_failed") {
+                localStorage.clear(); showScreen(document.getElementById("startScreen"));
+                document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
+                document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false;
+                showNotification("playerErrorNotif", "Kunne ikke gendanne det gamle spil. Start et nyt.", "error");
+            }
+
+            if (data.event === "admin_success") {
+                if (isHost) showNotification("adminNotif", data.message, "success");
+                else showNotification("playerNotif", data.message, "success");
+            }
+
+            if (data.event === "players_updated" && data.game_id === myGameId) {
+                allPlayers = data.players; setupActiveGameScreens(); 
+            }
+
+            if (data.event === "property_offered" && data.game_id === myGameId) {
+                if (!isHost && data.buyer_id === myPlayerId) {
+                    pendingOffer = data;
+                    document.getElementById("offerTitle").innerText = (data.seller_id === "bank" || !data.seller_id) ? "🏦 Banken tilbyder!" : `🤝 ${data.seller_name} tilbyder!`;
+                    document.getElementById("offerPropName").innerText = data.property_name;
+                    document.getElementById("offerPropPrice").innerText = formatMoney(data.price);
+                    document.getElementById("modalOverlay").style.display = "block"; document.getElementById("offerModal").style.display = "block";
+                }
+            }
+
+            if (data.event === "property_bought_success" && data.game_id === myGameId) {
+                if (!isHost && data.buyer_id === myPlayerId) { triggerConfetti(); showNotification("playerNotif", `🎉 Tillykke! Du ejer nu ${data.property_name}`, "success"); }
+            }
+
+            if (data.event === "properties_updated" && data.game_id === myGameId) {
+                allProperties = data.properties; renderProperties();
+            }
+
+            // --- NYT: MODTAGELSE AF HUSLEJE REGNING ---
+            if (data.event === "rent_demanded" && data.game_id === myGameId) {
+                if (!isHost && data.target_id === myPlayerId) {
+                    pendingRent = data;
+                    document.getElementById("rentDesc").innerText = `Du er landet på ${data.owner_name}s grund!`;
+                    document.getElementById("rentPropName").innerText = data.property_name;
+                    document.getElementById("rentAmount").innerText = formatMoney(data.amount);
+                    
+                    document.getElementById("modalOverlay").style.display = "block";
+                    document.getElementById("rentModal").style.display = "block";
+                }
+            }
+
+            if (data.event === "error") {
+                if (isHost) { showNotification("adminErrorNotif", data.message, "error"); } 
+                else {
+                    showNotification("playerErrorNotif", data.message, "error");
+                    document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none";
+                }
+            }
+        };
+
+        function renderLobbyList() {
+            const list = document.getElementById("lobbyPlayers"); list.innerHTML = "";
+            allPlayers.forEach(p => { const li = document.createElement("li"); li.innerText = "👤 " + p.name; list.appendChild(li); });
+        }
+
+        function updateAdminPropPrice() {
+            const propName = document.getElementById("adminPropSelect").value;
+            const prop = allProperties.find(p => p.name === propName);
+            if (prop) { selectedPropPrice = prop.price; document.getElementById("adminPropPriceDisplay").innerText = formatMoney(prop.price); } 
+            else { selectedPropPrice = 0; document.getElementById("adminPropPriceDisplay").innerText = "0 kr."; }
+        }
+
+        // --- OPTEGNING AF HUSE & HUSLEJE-KNAP ---
+        function renderProperties() {
+            if (isHost) {
+                const propSelect = document.getElementById("adminPropSelect"); propSelect.innerHTML = '<option value="">-- Vælg Grund --</option>';
+                allProperties.forEach(prop => { if (prop.owner_id === "") propSelect.innerHTML += `<option value="${prop.name}">${prop.name}</option>`; });
+                updateAdminPropPrice();
+            } else {
+                const myList = document.getElementById("myPropertiesList"); myList.innerHTML = ""; let hasProps = false;
+                
+                allProperties.forEach(prop => {
+                    if (prop.owner_id === myPlayerId) {
+                        hasProps = true;
+                        
+                        let buttonsHTML = ""; let cssClass = "prop-item";
+                        
+                        // Tegn huse/hotel
+                        let housesDisplay = "";
+                        if (prop.houses >= 5) housesDisplay = " 🏨";
+                        else if (prop.houses > 0) housesDisplay = " " + "🏠".repeat(prop.houses);
+
+                        let title = `📜 <b style="font-size: 18px;">${prop.name}${housesDisplay}</b><br><span style="font-size: 14px; font-weight: normal;">Nypris: ${prop.price} kr.</span>`;
+
+                        if (prop.is_mortgaged) {
+                            cssClass += " prop-mortgaged"; title = `🛑 <b>${prop.name} (Pantsat)</b>`;
+                            const cost = parseInt(prop.price * 0.55);
+                            buttonsHTML = `<button class="btn btn-small" style="background: #27ae60;" onclick="unmortgageProp('${prop.name}')">Køb fri (-${cost} kr.)</button>`;
+                        } else {
+                            const payout = prop.price / 2;
+                            buttonsHTML = `
+                                <div style="display: flex; gap: 5px; margin-top: 10px;">
+                                    <button class="btn btn-small" style="background: #c0392b; flex:1;" onclick="openRentModal('${prop.name}')">Kræv Leje!</button>
+                                </div>
+                                <div style="display: flex; gap: 5px; margin-top: 5px;">
+                                    <button class="btn btn-small" style="background: #3498db; flex: 1;" onclick="buildHouse('${prop.name}')">Byg Hus (-1000)</button>
+                                    <button class="btn btn-small" style="background: #e67e22; flex: 1;" onclick="mortgageProp('${prop.name}')">Pantsæt (+${payout})</button>
+                                    <button class="btn btn-small btn-secondary" onclick="openSellModal('${prop.name}', ${prop.price})">Sælg</button>
+                                </div>
+                            `;
+                        }
+
+                        myList.innerHTML += `<div class="${cssClass}">${title} ${buttonsHTML}</div>`;
+                    }
+                });
+                if (!hasProps) myList.innerHTML = '<p style="color: #7f8c8d; font-style: italic;">Du ejer ingen grunde endnu.</p>';
+            }
+        }
+
+        function setupActiveGameScreens() {
+            if (isHost) {
+                showScreen(document.getElementById("adminDashboard"));
+                const select1 = document.getElementById("adminPlayerSelect"), select2 = document.getElementById("adminPropPlayerSelect"), list = document.getElementById("adminPlayerList");
+                select1.innerHTML = '<option value="">-- Vælg spiller --</option>'; select2.innerHTML = '<option value="">-- Vælg Køber --</option>'; list.innerHTML = "";
+                allPlayers.forEach(p => {
+                    select1.innerHTML += `<option value="${p.id}">${p.name}</option>`; select2.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+                    const jailTag = p.in_jail ? `<span style="color: #c0392b; font-size: 14px;">🚔 Fængsel</span> ` : "";
+                    list.innerHTML += `<li id="admin-li-${p.id}"><span>👤 ${p.name}</span> <span style="text-align: right">${jailTag} <b id="admin-bal-${p.id}">${formatMoney(p.balance)}</b></span></li>`;
+                });
+                renderProperties();
+            } else {
+                showScreen(document.getElementById("playerDashboard"));
+                const myData = allPlayers.find(p => p.id === myPlayerId);
+                if (myData) { 
+                    document.getElementById("dashboardName").innerText = myData.name; document.getElementById("playerBalance").innerText = formatMoney(myData.balance); 
+                    if (myData.in_jail) { document.getElementById("jailBanner").style.display = "block"; document.getElementById("bailBtn").style.display = "block"; } 
+                    else { document.getElementById("jailBanner").style.display = "none"; document.getElementById("bailBtn").style.display = "none"; }
+                }
+                
+                const transferSelect = document.getElementById("transferToPlayer"), sellSelect = document.getElementById("sellToPlayer"), rentSelect = document.getElementById("rentFromPlayer");
+                transferSelect.innerHTML = '<option value="bank">🏦 Banken</option>'; sellSelect.innerHTML = '<option value="">-- Vælg Køber --</option>'; rentSelect.innerHTML = '<option value="">-- Hvem landede på grunden? --</option>';
+                allPlayers.forEach(p => { 
+                    if (p.id !== myPlayerId) {
+                        transferSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; sellSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; rentSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`;
+                    }
+                });
+                renderProperties();
+            }
+        }
+
+        function showNotification(elId, txt, type) { const el = document.getElementById(elId); el.innerText = txt; el.style.display = "block"; setTimeout(() => el.style.display = "none", 4000); }
+        function createGame() { socket.send(JSON.stringify({ action: "create_game", data: {} })); }
+        function joinGame() { const pin = document.getElementById("pinInput").value.trim(); const name = document.getElementById("nameInput").value.trim(); if (pin.length !== 4 || name === "") return alert("Udfyld venligst alt."); socket.send(JSON.stringify({ action: "join_game", data: { pin: pin, name: name } })); }
+        function startGame() { socket.send(JSON.stringify({ action: "start_game", data: { game_id: myGameId } })); }
+        function giveStartBonus() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) return alert("Vælg en spiller først!"); socket.send(JSON.stringify({ action: "give_pass_start_bonus", data: { game_id: myGameId, player_id: playerId } })); }
+        function sendToJail() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) return alert("Vælg en spiller først!"); socket.send(JSON.stringify({ action: "send_to_jail", data: { game_id: myGameId, player_id: playerId } })); }
+        function payBail() { socket.send(JSON.stringify({ action: "pay_bail", data: { game_id: myGameId, player_id: myPlayerId } })); }
+        function toggleModal(modalId) { const modal = document.getElementById(modalId); modal.style.display = modal.style.display === "none" || modal.style.display === "" ? "block" : "none"; }
+        
+        function executeTransfer() {
+            const amount = parseInt(document.getElementById("transferAmount").value); if (isNaN(amount) || amount <= 0) return alert("Ugyldigt beløb!");
+            socket.send(JSON.stringify({ action: "transfer_money", data: { game_id: myGameId, from_player_id: myPlayerId, to_player_id: document.getElementById("transferToPlayer").value, amount: amount } }));
+            document.getElementById("transferAmount").value = ""; toggleModal('transferModal');
+        }
+        
+        function showScreen(screen) { document.querySelectorAll('.card').forEach(c => c.classList.remove("active-card")); screen.classList.add("active-card"); }
+
+        function sendPropertyOffer() {
+            const propName = document.getElementById("adminPropSelect").value; const playerId = document.getElementById("adminPropPlayerSelect").value;
+            if (!propName || !playerId) return alert("Vælg både en grund og en køber!"); if (selectedPropPrice <= 0) return alert("Fejl med prisen.");
+            socket.send(JSON.stringify({ action: "offer_property", data: { game_id: myGameId, buyer_id: playerId, seller_id: "bank", property_name: propName, price: selectedPropPrice } }));
+            document.getElementById("adminPropSelect").value = ""; document.getElementById("adminPropPlayerSelect").value = ""; updateAdminPropPrice(); alert("Tilbud sendt til køberens telefon!");
+        }
+
+        function declineOffer() { document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none"; pendingOffer = null; }
+        function acceptOffer() { 
+            socket.send(JSON.stringify({ action: "accept_property", data: pendingOffer })); 
+            document.getElementById("modalOverlay").style.display = "none"; 
+            document.getElementById("offerModal").style.display = "none"; 
+            pendingOffer = null; 
+        }
+        function mortgageProp(propName) { if(confirm("Vil du pantsætte " + propName + " for det halve af nyprisen?")) { socket.send(JSON.stringify({ action: "mortgage_property", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); } }
+        function unmortgageProp(propName) { socket.send(JSON.stringify({ action: "unmortgage_property", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); }
+
+        function openSellModal(propName, originalPrice) {
+            currentSellingProp = propName; document.getElementById("sellPropTitle").innerText = propName; document.getElementById("sellPropOriginalPrice").innerText = originalPrice; document.getElementById("sellPropPrice").value = originalPrice;
+            toggleModal('propertiesModal'); toggleModal('sellPropModal');   
+        }
+
+        function executePlayerSale() {
+            const buyerId = document.getElementById("sellToPlayer").value; const price = parseInt(document.getElementById("sellPropPrice").value); const originalPrice = parseInt(document.getElementById("sellPropOriginalPrice").innerText);
+            if (!buyerId) return alert("Hvem vil du sælge til?"); if (isNaN(price) || price <= 0) return alert("Indtast en gyldig pris!");
+            if (price > originalPrice) { showNotification("playerErrorNotif", "Hov - banken vil ikke have du sælger over nyprisen 😉", "error"); return; }
+            const myName = allPlayers.find(p => p.id === myPlayerId).name;
+            socket.send(JSON.stringify({ action: "offer_property", data: { game_id: myGameId, buyer_id: buyerId, seller_id: myPlayerId, seller_name: myName, property_name: currentSellingProp, price: price } }));
+            toggleModal('sellPropModal'); showNotification("playerNotif", "Tilbud sendt afsted!", "success");
+        }
+
+        // --- NYT: BYG HUS ---
+        function buildHouse(propName) {
+            socket.send(JSON.stringify({ action: "build_house", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } }));
+        }
+
+        // --- NYT: OPKRÆV HUSLEJE ---
+        function openRentModal(propName) {
+            currentRentProp = propName;
+            document.getElementById("rentPropTitle").innerText = propName;
+            toggleModal('propertiesModal'); toggleModal('demandRentModal');
+        }
+
+        function executeRentDemand() {
+            const targetId = document.getElementById("rentFromPlayer").value;
+            if (!targetId) return alert("Hvem skal betale?");
+
+            const myName = allPlayers.find(p => p.id === myPlayerId).name;
+            
+            // Vi sender ikke længere 'amount' med, serveren klarer det!
+            socket.send(JSON.stringify({
+                action: "demand_rent",
+                data: { game_id: myGameId, target_id: targetId, owner_id: myPlayerId, owner_name: myName, property_name: currentRentProp }
+            }));
+
+            toggleModal('demandRentModal');
+            showNotification("playerNotif", "Regning sendt (Serveren beregner beløbet automatisk)!", "success");
+        }
+
+        function executePayRent() {
+            if (!pendingRent) return;
+            socket.send(JSON.stringify({
+                action: "pay_rent",
+                data: { game_id: myGameId, from_id: myPlayerId, to_id: pendingRent.owner_id, amount: pendingRent.amount }
+            }));
+            
+            // Lukker modalen med det samme. Hvis de ikke har råd, vil serveren sende en 'error' event
+            // Men husk: "modalOverlay" lukkes KUN, hvis de rent faktisk har råd, ellers bliver de tvunget til at skaffe penge.
+            document.getElementById("modalOverlay").style.display = "none";
+            document.getElementById("rentModal").style.display = "none";
+            pendingRent = null;
+        }
+
+    </script>
+</body>
+</html>
