@@ -311,7 +311,6 @@
         };
         const propOrder = Object.keys(propColors);
 
-        // --- NYT: HJÆLPEFUNKTION TIL AT TJEKKE MONOPOL I FRONTEND ---
         const colorGroupsList = [
             ["Rødovrevej", "Hvidovrevej"],
             ["Roskildevej", "Valby Langgade", "Allégade"],
@@ -333,7 +332,7 @@
                     return true;
                 }
             }
-            return false; // Rederier/Bryggerier falder her (må aldrig bygge)
+            return false;
         }
 
         let audioCtx = null;
@@ -500,7 +499,16 @@
                 }
 
                 if (data.event === "terminal_joined") {
-                    myGameId = data.game_id; document.getElementById("terminalScreen").style.display = "flex"; startNfcReader();
+                    myGameId = data.game_id; 
+                    document.getElementById("terminalScreen").style.display = "flex"; 
+                    
+                    // NYT: Viser "Venter på spilstart" hvis spillet kun er i lobbyen
+                    if (data.status === "waiting") {
+                        updateTerminalUI("", "Venter på spilstart...", "⏳", "Spillet er ikke startet endnu.");
+                    } else {
+                        updateTerminalUI("", "Venter på Banken...", "💳", "");
+                    }
+                    startNfcReader();
                 }
 
                 if (data.event === "terminal_write_mode" && isTerminalMode && data.game_id === myGameId) {
@@ -574,6 +582,12 @@
 
                 if (data.event === "game_started" || data.event === "reconnect_success") {
                     if (data.event === "reconnect_success") { myGameId = data.game_id; myPlayerId = data.player_id; isHost = data.is_host; resetAdminIdle(); }
+                    
+                    // NYT: Hvis terminalen ventede, opdaterer vi skærmen nu, fordi spillet er startet!
+                    if (data.game_id === myGameId && isTerminalMode) {
+                        updateTerminalUI("", "Venter på Banken...", "💳", "");
+                    }
+
                     if (data.game_id === myGameId && !isTerminalMode) {
                         allPlayers = data.players; allProperties = data.properties || [];
                         if (data.status === "active" || data.event === "game_started") { setupActiveGameScreens(); renderInitialLogs(data.logs); } 
@@ -816,8 +830,6 @@
                         buttonsHTML = `<button class="btn btn-small" style="background: #27ae60;" onclick="unmortgageProp('${prop.name}')">Køb fri (-${cost} kr.)</button>`;
                     } else {
                         const payout = prop.price / 2;
-                        
-                        // NYT: TJEK OM SPILlEREN HAR MONOPOL FOR AT VISE "BYG HUS" KNAPPEN
                         let canBuild = hasMonopoly(prop.name, myPlayerId);
                         let buildBtnHtml = canBuild ? `<button class="btn btn-small" style="background: #3498db; flex: 1;" onclick="buildHouse('${prop.name}')">Byg Hus (-1000)</button>` : '';
 

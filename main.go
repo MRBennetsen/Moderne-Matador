@@ -51,7 +51,6 @@ func broadcast(message map[string]interface{}) {
 	}
 }
 
-// --- NYT: DEFINITION AF FARVEGRUPPER (Til Hus-tjek og Dobbelt Leje) ---
 var ColorGroups = [][]string{
 	{"Rødovrevej", "Hvidovrevej"},
 	{"Roskildevej", "Valby Langgade", "Allégade"},
@@ -236,14 +235,15 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			conn.WriteJSON(map[string]interface{}{"event": "join_success", "player_id": playerID, "game_id": gameID, "name": playerName})
 			broadcast(map[string]interface{}{"event": "player_joined", "game_id": gameID, "player_id": playerID, "player_name": playerName})
 
+		// --- NYT: Lader terminalen joine BÅDE i waiting og active ---
 		case "join_terminal":
 			pin, _ := msg.Data["pin"].(string)
-			var gameID string
-			if err := db.QueryRow("SELECT id FROM games WHERE pin_code = ? AND status = 'active'", pin).Scan(&gameID); err != nil {
-				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Ugyldig PIN, eller spillet er ikke startet endnu."})
+			var gameID, status string
+			if err := db.QueryRow("SELECT id, status FROM games WHERE pin_code = ? AND status != 'finished'", pin).Scan(&gameID, &status); err != nil {
+				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Ugyldig PIN-kode."})
 				continue
 			}
-			conn.WriteJSON(map[string]interface{}{"event": "terminal_joined", "game_id": gameID})
+			conn.WriteJSON(map[string]interface{}{"event": "terminal_joined", "game_id": gameID, "status": status})
 
 		case "activate_terminal":
 			gameID, _ := msg.Data["game_id"].(string)
@@ -445,13 +445,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 			broadcastPool(gameID)
 
-		// --- NYT: VALIDERING AF MONOPOL FØR DER MÅ BYGGES ---
 		case "build_house":
 			gameID, _ := msg.Data["game_id"].(string)
 			propName, _ := msg.Data["property_name"].(string)
 			playerID, _ := msg.Data["player_id"].(string)
 
-			// 1. Find farvegruppen for denne ejendom
 			var group []string
 			for _, g := range ColorGroups {
 				for _, p := range g {
@@ -466,7 +464,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// 2. Tjek om spilleren ejer ALLE grunde i denne gruppe
 			ownsAll := true
 			for _, p := range group {
 				var owner string
@@ -481,7 +478,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// 3. Udfør byggeriet hvis check er bestået
 			var houses, currentBalance int
 			db.QueryRow("SELECT houses FROM properties WHERE game_id = ? AND property_name = ?", gameID, propName).Scan(&houses)
 			db.QueryRow("SELECT balance FROM players WHERE id = ?", playerID).Scan(&currentBalance)
@@ -501,7 +497,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcast(map[string]interface{}{"event": "properties_updated", "game_id": gameID, "properties": getProperties(gameID)})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 
-		// --- NYT: DOBBELT LEJE VED MONOPOL UDEN HUSE ---
 		case "demand_rent":
 			gameID, _ := msg.Data["game_id"].(string)
 			propName, _ := msg.Data["property_name"].(string)
@@ -517,7 +512,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 			amount := RentTable[propName][houses]
 
-			// Hvis der ingen huse er, tjek om ejeren har monopol (så lejen fordobles)
 			if houses == 0 {
 				for _, g := range ColorGroups {
 					inGroup := false
@@ -527,7 +521,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 							break
 						}
 					}
-
 					if inGroup {
 						ownsAll := true
 						for _, p := range g {
@@ -540,7 +533,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 						}
 						if ownsAll {
 							amount = amount * 2
-						} // DOBBELT LEJE!
+						}
 						break
 					}
 				}
