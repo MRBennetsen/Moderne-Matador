@@ -58,7 +58,6 @@
         .terminal-write { background: #8e44ad !important; }
         .nfc-icon { font-size: 100px; margin: 20px 0; animation: pulse 2s infinite; }
         
-        /* NYT: ADMIN SCREENSAVER */
         #adminScreensaver { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); z-index: 2500; display: none; flex-direction: column; align-items: center; padding: 40px; box-sizing: border-box; overflow-y: auto; transition: background 0.3s; }
         
         @keyframes pulse { 0% { transform: scale(0.95); opacity: 0.8; } 50% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0.95); opacity: 0.8; } }
@@ -290,11 +289,11 @@
         let pendingRent = null;
         let winnerInterval = null;
 
-        // Terminal Variabler
         let isTerminalMode = false;
-        let terminalState = "idle"; // 'idle' | 'bank' | 'offer' | 'rent' | 'write'
+        let terminalState = "idle";
         let terminalExpectedId = "";
         let terminalPayload = {};
+        let ndef = null;
 
         const formatMoney = (amount) => new Intl.NumberFormat('da-DK').format(amount) + " kr.";
 
@@ -313,7 +312,13 @@
         const propOrder = Object.keys(propColors);
 
         let audioCtx = null;
-        function initAudio() { if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } }
+        function initAudio() { 
+            try {
+                if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } 
+            } catch(e) {
+                console.log("Lydfejl (ofte pga manglende bruger-interaktion før start): ", e);
+            }
+        }
 
         function playSound(type) {
             if (!audioCtx) return;
@@ -336,17 +341,13 @@
             }
         }
 
-        // --- NYT: ADMIN SCREENSAVER LOGIK ---
         let adminIdleTimer;
         function resetAdminIdle() {
             if (!isHost) return;
             clearTimeout(adminIdleTimer);
             document.getElementById('adminScreensaver').style.display = 'none';
-            // Start screensaver efter 30 sekunder (30000 ms) uden aktivitet
             adminIdleTimer = setTimeout(showAdminScreensaver, 30000);
         }
-        
-        // Nulstil timer når der sker noget på admin skærmen
         window.addEventListener('mousemove', resetAdminIdle);
         window.addEventListener('touchstart', resetAdminIdle);
         window.addEventListener('keypress', resetAdminIdle);
@@ -383,18 +384,31 @@
         }
 
         function toggleDarkMode() {
-            document.body.classList.toggle('dark-mode'); const isDark = document.body.classList.contains('dark-mode');
-            localStorage.setItem('matador_darkmode', isDark); document.getElementById('themeToggle').innerText = isDark ? '☀️' : '🌙';
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('matador_darkmode', isDark);
+            document.getElementById('themeToggle').innerText = isDark ? '☀️' : '🌙';
         }
-        if (localStorage.getItem('matador_darkmode') === 'true') { document.body.classList.add('dark-mode'); document.getElementById('themeToggle').innerText = '☀️'; }
+        
+        if (localStorage.getItem('matador_darkmode') === 'true') {
+            document.body.classList.add('dark-mode'); 
+            document.getElementById('themeToggle').innerText = '☀️';
+        }
 
         window.onload = function() {
-            const urlParams = new URLSearchParams(window.location.search); const pinParam = urlParams.get('pin');
-            if (pinParam) { document.getElementById("pinInput").value = pinParam; document.getElementById("nameInput").focus(); }
+            const urlParams = new URLSearchParams(window.location.search);
+            const pinParam = urlParams.get('pin');
+            if (pinParam) {
+                document.getElementById("pinInput").value = pinParam;
+                document.getElementById("nameInput").focus(); 
+            }
             resetAdminIdle();
         };
 
-        function forceReset() { localStorage.clear(); window.location.href = window.location.pathname; }
+        function forceReset() { 
+            localStorage.clear(); 
+            window.location.href = window.location.pathname; 
+        }
 
         function triggerConfetti() {
             const colors = ['#2ecc71', '#f1c40f', '#e74c3c', '#3498db', '#9b59b6'];
@@ -442,12 +456,16 @@
             socket.onopen = function() {
                 const savedGameId = localStorage.getItem("matador_gameId");
                 if (savedGameId) {
-                    document.getElementById("connStatus").innerText = "Gendanner... 🔄"; document.getElementById("connStatus").style.color = "orange";
+                    document.getElementById("connStatus").innerText = "Gendanner... 🔄"; 
+                    document.getElementById("connStatus").style.color = "orange";
                     document.getElementById("cancelReconnectBtn").style.display = "block"; 
                     socket.send(JSON.stringify({ action: "reconnect", data: { game_id: savedGameId, player_id: localStorage.getItem("matador_playerId") || "", is_host: localStorage.getItem("matador_isHost") === "true" } }));
                 } else {
-                    document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
-                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false; document.getElementById("terminalBtn").disabled = false;
+                    document.getElementById("connStatus").innerText = "Online 🟢"; 
+                    document.getElementById("connStatus").style.color = "green";
+                    document.getElementById("createBtn").disabled = false; 
+                    document.getElementById("joinBtn").disabled = false; 
+                    document.getElementById("terminalBtn").disabled = false;
                 }
                 pingInterval = setInterval(() => { if (socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify({ action: "ping", data: {} })); } }, 25000);
             };
@@ -466,7 +484,8 @@
                 if (data.event === "game_created") {
                     isHost = true; myGameId = data.game_id;
                     localStorage.setItem("matador_gameId", myGameId); localStorage.setItem("matador_isHost", "true");
-                    showScreen(document.getElementById("lobbyScreen")); document.getElementById("pinCode").innerText = data.pin;
+                    showScreen(document.getElementById("lobbyScreen")); 
+                    document.getElementById("pinCode").innerText = data.pin;
                     const joinUrl = `https://matador.bennetsen.dk/?pin=${data.pin}`;
                     document.getElementById("qrCodeImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(joinUrl)}`;
                     document.getElementById("qrCodeImage").style.display = "inline-block";
@@ -480,24 +499,21 @@
                 }
 
                 if (data.event === "terminal_joined") {
-                    myGameId = data.game_id; document.getElementById("terminalScreen").style.display = "flex"; startNfcReader();
+                    myGameId = data.game_id; 
+                    document.getElementById("terminalScreen").style.display = "flex"; 
+                    startNfcReader();
                 }
 
-                // --- OMNI-CHANNEL TERMINAL LOGIK ---
-                
-                // 1. Skrive Mode
                 if (data.event === "terminal_write_mode" && isTerminalMode && data.game_id === myGameId) {
                     terminalState = "write"; terminalExpectedId = data.player_id; playSound('cash'); 
                     updateTerminalUI("terminal-write", "Klar til at kode kort!", "🔮", `Læg et blankt kort på for at koble det til ${data.player_name}`);
                 }
 
-                // 2. Bank Regning
                 if (data.event === "terminal_activated" && isTerminalMode && data.game_id === myGameId) {
                     terminalState = "bank"; terminalPayload = data; playSound('cash');
                     updateTerminalUI("terminal-ready", "Afventer Dankort...", "💳", data.message, data.amount);
                 }
 
-                // 3. Modtager et ejendoms-tilbud
                 if (data.event === "property_offered" && data.game_id === myGameId) {
                     if (isTerminalMode) {
                         terminalState = "offer"; terminalExpectedId = data.buyer_id; terminalPayload = data; playSound('cash');
@@ -511,7 +527,6 @@
                     }
                 }
 
-                // 4. Modtager et Husleje-krav
                 if (data.event === "rent_demanded" && data.game_id === myGameId) {
                     if (isTerminalMode) {
                         terminalState = "rent"; terminalExpectedId = data.target_id; terminalPayload = data; playSound('cash');
@@ -524,21 +539,17 @@
                     }
                 }
 
-                // --- OMNI-CHANNEL LUKNING AF MODALS & TERMINAL ---
-                
-                // Når en Ejendom er købt (enten via telefon eller terminal)
                 if (data.event === "property_bought_success" && data.game_id === myGameId) {
                     if (isTerminalMode && terminalState === "offer" && terminalPayload.property_name === data.property_name) {
                         playSound('cash'); updateTerminalUI("terminal-approved", "GODKENDT", "✅", `Køb af ${data.property_name} gennemført!`);
                         setTimeout(() => { if(terminalState==="offer") { terminalState="idle"; updateTerminalUI("", "Venter på Banken...", "💳", ""); } }, 4000);
                     }
                     if (!isHost && data.buyer_id === myPlayerId) { 
-                        if(pendingOffer && pendingOffer.property_name === data.property_name) declineOffer(); // Lukker mobil-modal
+                        if(pendingOffer && pendingOffer.property_name === data.property_name) declineOffer(); 
                         playSound('cash'); triggerConfetti(); showNotification("playerNotif", `🎉 Tillykke! Du ejer nu ${data.property_name}`, "success"); 
                     }
                 }
 
-                // Når en Husleje er betalt (telefon eller terminal)
                 if (data.event === "rent_paid_success" && data.game_id === myGameId) {
                     if (isTerminalMode && terminalState === "rent") {
                         playSound('cash'); updateTerminalUI("terminal-approved", "GODKENDT", "✅", `Huslejen er betalt!`);
@@ -549,7 +560,6 @@
                     }
                 }
 
-                // Standard Terminal Betalings Resultat
                 if (data.event === "terminal_result" && isTerminalMode && data.game_id === myGameId) {
                     if (data.status === "approved") {
                         playSound('cash'); triggerConfetti(); updateTerminalUI("terminal-approved", "GODKENDT", "✅", `${data.player_name} betalte beløbet.`);
@@ -559,18 +569,24 @@
                     setTimeout(() => { terminalState="idle"; updateTerminalUI("", "Venter på Banken...", "💳", ""); }, 4000);
                 }
 
-
-                // Gamle Logik Blokke
                 if (data.event === "player_joined" && isHost && data.game_id === myGameId) {
-                    allPlayers.push({id: data.player_id, name: data.player_name, balance: 30000, in_jail: false, is_bankrupt: false}); renderLobbyList();
+                    allPlayers.push({id: data.player_id, name: data.player_name, balance: 30000, in_jail: false, is_bankrupt: false}); 
+                    renderLobbyList();
                 }
 
                 if (data.event === "game_started" || data.event === "reconnect_success") {
-                    if (data.event === "reconnect_success") { myGameId = data.game_id; myPlayerId = data.player_id; isHost = data.is_host; resetAdminIdle(); }
+                    if (data.event === "reconnect_success") { 
+                        myGameId = data.game_id; myPlayerId = data.player_id; isHost = data.is_host; resetAdminIdle(); 
+                    }
                     if (data.game_id === myGameId && !isTerminalMode) {
                         allPlayers = data.players; allProperties = data.properties || [];
-                        if (data.status === "active" || data.event === "game_started") { setupActiveGameScreens(); renderInitialLogs(data.logs); } 
-                        else if (data.status === "waiting") { isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); renderLobbyList(); }
+                        if (data.status === "active" || data.event === "game_started") { 
+                            setupActiveGameScreens(); renderInitialLogs(data.logs); 
+                        } 
+                        else if (data.status === "waiting") { 
+                            isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); 
+                            renderLobbyList(); 
+                        }
                     }
                 }
 
@@ -591,14 +607,19 @@
                 }
 
                 if (data.event === "reconnect_failed") {
-                    localStorage.clear(); showScreen(document.getElementById("startScreen"));
-                    document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
-                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false; document.getElementById("cancelReconnectBtn").style.display = "none";
-                    showNotification("playerErrorNotif", "Kunne ikke gendanne. Start et nyt.", "error");
+                    localStorage.clear(); 
+                    showScreen(document.getElementById("startScreen"));
+                    document.getElementById("connStatus").innerText = "Online 🟢"; 
+                    document.getElementById("connStatus").style.color = "green";
+                    document.getElementById("createBtn").disabled = false; 
+                    document.getElementById("joinBtn").disabled = false; 
+                    document.getElementById("terminalBtn").disabled = false;
+                    document.getElementById("cancelReconnectBtn").style.display = "none";
+                    alert("Kunne ikke gendanne det forrige spil. Start venligst et nyt.");
                 }
 
                 if (data.event === "admin_success") {
-                    if (data.message.includes("udbetalt") || data.message.includes("betalt")) playSound('cash');
+                    if (data.message.includes("udbetalt") || data.message.includes("betalt") || data.message.includes("Kort uddelt")) playSound('cash');
                     if (isHost) showNotification("adminNotif", data.message, "success"); else showNotification("playerNotif", data.message, "success");
                 }
 
@@ -627,7 +648,24 @@
         }
         connectWebSocket();
 
-        // --- NFC SCANNER ENGINE ---
+        // -------------------- KANP FUNKTIONER --------------------
+        function getHistory() { initAudio(); socket.send(JSON.stringify({ action: "get_history", data: {} })); }
+        function createGame() { initAudio(); socket.send(JSON.stringify({ action: "create_game", data: {} })); }
+        function joinGame() { 
+            initAudio(); 
+            const pin = document.getElementById("pinInput").value.trim(); const name = document.getElementById("nameInput").value.trim(); 
+            if (pin.length !== 4 || name === "") { playSound('error'); return alert("Udfyld alt."); }
+            socket.send(JSON.stringify({ action: "join_game", data: { pin: pin, name: name } })); 
+        }
+        function startGame() { socket.send(JSON.stringify({ action: "start_game", data: { game_id: myGameId } })); }
+        function giveStartBonus() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) { playSound('error'); return alert("Vælg en spiller først!"); } socket.send(JSON.stringify({ action: "give_pass_start_bonus", data: { game_id: myGameId, player_id: playerId } })); }
+        function sendToJail() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) { playSound('error'); return alert("Vælg en spiller først!"); } socket.send(JSON.stringify({ action: "send_to_jail", data: { game_id: myGameId, player_id: playerId } })); }
+        function payBail() { socket.send(JSON.stringify({ action: "pay_bail", data: { game_id: myGameId, player_id: myPlayerId } })); }
+        function giveJailCard() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) return alert("Vælg en spiller først!"); socket.send(JSON.stringify({ action: "give_jail_card", data: { game_id: myGameId, player_id: playerId } })); }
+        function payoutPool() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) return alert("Vælg spilleren der landede på Gratis Parkering!"); socket.send(JSON.stringify({ action: "payout_pool", data: { game_id: myGameId, player_id: playerId } })); }
+        function useJailCard() { socket.send(JSON.stringify({ action: "use_jail_card", data: { game_id: myGameId, player_id: myPlayerId } })); }
+
+        // --- NFC FUNKTIONER ---
         function joinAsTerminal() {
             const pin = document.getElementById("pinInput").value.trim();
             if (pin.length !== 4) { playSound('error'); return alert("Indtast spillets 4-cifrede PIN kode først."); }
@@ -639,7 +677,7 @@
             try {
                 ndef = new NDEFReader(); await ndef.scan(); console.log("NFC Scanner aktiv...");
                 ndef.addEventListener("reading", async ({ message }) => {
-                    if (terminalState === "idle") return; // Læs ikke kort, hvis der ikke er en regning åben
+                    if (terminalState === "idle") return; 
 
                     if (terminalState === "write") {
                         try {
@@ -654,14 +692,12 @@
                         return; 
                     }
 
-                    // Aflæs ID for betalinger
                     const decoder = new TextDecoder();
                     let scannedId = "";
                     for (const record of message.records) { scannedId = decoder.decode(record.data); }
 
                     if (terminalState === "offer") {
                         if (scannedId === terminalExpectedId) {
-                            // Det er den rigtige persons kort!
                             socket.send(JSON.stringify({ action: "accept_property", data: terminalPayload }));
                         } else {
                             playSound('error'); updateTerminalUI("terminal-declined", "AFVIST", "❌", "Forkert Dankort! Brug det rigtige kort.");
@@ -696,6 +732,72 @@
             socket.send(JSON.stringify({ action: "activate_terminal", data: { game_id: myGameId, amount: amount, message: msg } }));
             document.getElementById("adminTerminalAmount").value = ""; document.getElementById("adminTerminalMsg").value = "";
             showNotification("adminNotif", "Regning sendt til Dankortterminalen!", "success");
+        }
+
+        // --- ANDRE FUNKTIONER ---
+        function toggleModal(modalId) { const modal = document.getElementById(modalId); modal.style.display = modal.style.display === "none" || modal.style.display === "" ? "block" : "none"; }
+        
+        function executeTransfer() {
+            const amount = parseInt(document.getElementById("transferAmount").value); if (isNaN(amount) || amount <= 0) { playSound('error'); return alert("Ugyldigt beløb!"); }
+            socket.send(JSON.stringify({ action: "transfer_money", data: { game_id: myGameId, from_player_id: myPlayerId, to_player_id: document.getElementById("transferToPlayer").value, amount: amount } }));
+            document.getElementById("transferAmount").value = ""; toggleModal('transferModal');
+        }
+        
+        function showScreen(screen) { document.querySelectorAll('.card').forEach(c => c.classList.remove("active-card")); screen.classList.add("active-card"); }
+
+        function sendPropertyOffer() {
+            const propName = document.getElementById("adminPropSelect").value; const playerId = document.getElementById("adminPropPlayerSelect").value;
+            if (!propName || !playerId) { playSound('error'); return alert("Vælg grund og køber!"); } if (selectedPropPrice <= 0) return alert("Fejl med prisen.");
+            socket.send(JSON.stringify({ action: "offer_property", data: { game_id: myGameId, buyer_id: playerId, seller_id: "bank", property_name: propName, price: selectedPropPrice } }));
+            document.getElementById("adminPropSelect").value = ""; document.getElementById("adminPropPlayerSelect").value = ""; updateAdminPropPrice(); 
+        }
+
+        function declineOffer() { document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none"; pendingOffer = null; }
+        function acceptOffer() { socket.send(JSON.stringify({ action: "accept_property", data: pendingOffer })); declineOffer(); }
+        function mortgageProp(propName) { if(confirm("Vil du pantsætte " + propName + "?")) { socket.send(JSON.stringify({ action: "mortgage_property", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); } }
+        function unmortgageProp(propName) { socket.send(JSON.stringify({ action: "unmortgage_property", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); }
+        function openSellModal(propName, originalPrice) { currentSellingProp = propName; document.getElementById("sellPropTitle").innerText = propName; document.getElementById("sellPropOriginalPrice").innerText = originalPrice; document.getElementById("sellPropPrice").value = originalPrice; toggleModal('propertiesModal'); toggleModal('sellPropModal'); }
+        
+        function executePlayerSale() {
+            const buyerId = document.getElementById("sellToPlayer").value; const price = parseInt(document.getElementById("sellPropPrice").value); const originalPrice = parseInt(document.getElementById("sellPropOriginalPrice").innerText);
+            if (!buyerId) { playSound('error'); return alert("Hvem vil du sælge til?"); } if (isNaN(price) || price <= 0) { playSound('error'); return alert("Indtast pris!"); }
+            if (price > originalPrice) { playSound('error'); showNotification("playerErrorNotif", "Banken vil ikke have du sælger over nyprisen 😉", "error"); return; }
+            const myName = allPlayers.find(p => p.id === myPlayerId).name;
+            socket.send(JSON.stringify({ action: "offer_property", data: { game_id: myGameId, buyer_id: buyerId, seller_id: myPlayerId, seller_name: myName, property_name: currentSellingProp, price: price } }));
+            toggleModal('sellPropModal'); showNotification("playerNotif", "Tilbud sendt afsted!", "success");
+        }
+
+        function buildHouse(propName) { socket.send(JSON.stringify({ action: "build_house", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); }
+        function openRentModal(propName) { currentRentProp = propName; document.getElementById("rentPropTitle").innerText = propName; toggleModal('propertiesModal'); toggleModal('demandRentModal'); }
+        function executeRentDemand() {
+            const targetId = document.getElementById("rentFromPlayer").value; if (!targetId) { playSound('error'); return alert("Hvem skal betale?"); }
+            const myName = allPlayers.find(p => p.id === myPlayerId).name;
+            socket.send(JSON.stringify({ action: "demand_rent", data: { game_id: myGameId, target_id: targetId, owner_id: myPlayerId, owner_name: myName, property_name: currentRentProp } }));
+            toggleModal('demandRentModal'); showNotification("playerNotif", "Regning sendt!", "success");
+        }
+
+        function executePayRent() {
+            if (!pendingRent) return;
+            socket.send(JSON.stringify({ action: "pay_rent", data: { game_id: myGameId, from_id: myPlayerId, to_id: pendingRent.owner_id, amount: pendingRent.amount } }));
+            document.getElementById("modalOverlay").style.display = "none"; document.getElementById("rentModal").style.display = "none"; pendingRent = null;
+        }
+
+        function drawChanceCard() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) { playSound('error'); return alert("Vælg en spiller først!"); } socket.send(JSON.stringify({ action: "draw_chance_card", data: { game_id: myGameId, player_id: playerId } })); }
+        function closeChanceModal() { document.getElementById("modalOverlay").style.display = "none"; document.getElementById("chanceModal").style.display = "none"; }
+
+        function executeBankruptcy() {
+            if(confirm("Er du HELT SIKKER? Dette kan ikke fortrydes!")) {
+                playSound('jail');
+                const targetId = document.getElementById("bankruptToPlayer").value;
+                socket.send(JSON.stringify({ action: "declare_bankruptcy", data: { game_id: myGameId, player_id: myPlayerId, target_id: targetId } }));
+                toggleModal('bankruptModal');
+            }
+        }
+
+        function endGame() {
+            if(confirm("Er du sikker? Dette vil afslutte spillet og kåre en vinder!")) {
+                socket.send(JSON.stringify({ action: "end_game", data: { game_id: myGameId } }));
+            }
         }
 
         function renderLobbyList() {
@@ -779,53 +881,6 @@
                     if (p.id !== myPlayerId && !p.is_bankrupt) { transferSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; sellSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; rentSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; bankruptSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; }
                 });
                 renderProperties();
-            }
-        }
-
-        function declineOffer() { document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none"; pendingOffer = null; }
-        function acceptOffer() { socket.send(JSON.stringify({ action: "accept_property", data: pendingOffer })); declineOffer(); }
-        function mortgageProp(propName) { if(confirm("Vil du pantsætte " + propName + "?")) { socket.send(JSON.stringify({ action: "mortgage_property", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); } }
-        function unmortgageProp(propName) { socket.send(JSON.stringify({ action: "unmortgage_property", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); }
-        function openSellModal(propName, originalPrice) { currentSellingProp = propName; document.getElementById("sellPropTitle").innerText = propName; document.getElementById("sellPropOriginalPrice").innerText = originalPrice; document.getElementById("sellPropPrice").value = originalPrice; toggleModal('propertiesModal'); toggleModal('sellPropModal'); }
-        
-        function executePlayerSale() {
-            const buyerId = document.getElementById("sellToPlayer").value; const price = parseInt(document.getElementById("sellPropPrice").value); const originalPrice = parseInt(document.getElementById("sellPropOriginalPrice").innerText);
-            if (!buyerId) { playSound('error'); return alert("Hvem vil du sælge til?"); } if (isNaN(price) || price <= 0) { playSound('error'); return alert("Indtast pris!"); }
-            if (price > originalPrice) { playSound('error'); showNotification("playerErrorNotif", "Banken vil ikke have du sælger over nyprisen 😉", "error"); return; }
-            const myName = allPlayers.find(p => p.id === myPlayerId).name;
-            socket.send(JSON.stringify({ action: "offer_property", data: { game_id: myGameId, buyer_id: buyerId, seller_id: myPlayerId, seller_name: myName, property_name: currentSellingProp, price: price } }));
-            toggleModal('sellPropModal'); showNotification("playerNotif", "Tilbud sendt afsted!", "success");
-        }
-
-        function buildHouse(propName) { socket.send(JSON.stringify({ action: "build_house", data: { game_id: myGameId, player_id: myPlayerId, property_name: propName } })); }
-        function openRentModal(propName) { currentRentProp = propName; document.getElementById("rentPropTitle").innerText = propName; toggleModal('propertiesModal'); toggleModal('demandRentModal'); }
-        function executeRentDemand() {
-            const targetId = document.getElementById("rentFromPlayer").value; if (!targetId) { playSound('error'); return alert("Hvem skal betale?"); }
-            const myName = allPlayers.find(p => p.id === myPlayerId).name;
-            socket.send(JSON.stringify({ action: "demand_rent", data: { game_id: myGameId, target_id: targetId, owner_id: myPlayerId, owner_name: myName, property_name: currentRentProp } }));
-            toggleModal('demandRentModal'); showNotification("playerNotif", "Regning sendt!", "success");
-        }
-
-        function executePayRent() {
-            if (!pendingRent) return;
-            socket.send(JSON.stringify({ action: "pay_rent", data: { game_id: myGameId, from_id: myPlayerId, to_id: pendingRent.owner_id, amount: pendingRent.amount } }));
-        }
-
-        function drawChanceCard() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) { playSound('error'); return alert("Vælg en spiller først!"); } socket.send(JSON.stringify({ action: "draw_chance_card", data: { game_id: myGameId, player_id: playerId } })); }
-        function closeChanceModal() { document.getElementById("modalOverlay").style.display = "none"; document.getElementById("chanceModal").style.display = "none"; }
-
-        function executeBankruptcy() {
-            if(confirm("Er du HELT SIKKER? Dette kan ikke fortrydes!")) {
-                playSound('jail');
-                const targetId = document.getElementById("bankruptToPlayer").value;
-                socket.send(JSON.stringify({ action: "declare_bankruptcy", data: { game_id: myGameId, player_id: myPlayerId, target_id: targetId } }));
-                toggleModal('bankruptModal');
-            }
-        }
-
-        function endGame() {
-            if(confirm("Er du sikker? Dette vil afslutte spillet og kåre en vinder!")) {
-                socket.send(JSON.stringify({ action: "end_game", data: { game_id: myGameId } }));
             }
         }
     </script>
