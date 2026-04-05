@@ -224,6 +224,53 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			conn.WriteJSON(map[string]interface{}{"event": "join_success", "player_id": playerID, "game_id": gameID, "name": playerName})
 			broadcast(map[string]interface{}{"event": "player_joined", "game_id": gameID, "player_id": playerID, "player_name": playerName})
 
+		// --- NYT: Logik til at joine som terminal ---
+		case "join_terminal":
+			pin, _ := msg.Data["pin"].(string)
+			var gameID string
+			if err := db.QueryRow("SELECT id FROM games WHERE pin_code = ? AND status = 'active'", pin).Scan(&gameID); err != nil {
+				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Ugyldig PIN, eller spillet er ikke startet endnu."})
+				continue
+			}
+			conn.WriteJSON(map[string]interface{}{"event": "terminal_joined", "game_id": gameID})
+
+		// --- NYT: Admin sender regning til Terminalen ---
+		case "activate_terminal":
+			gameID, _ := msg.Data["game_id"].(string)
+			amountFloat, _ := msg.Data["amount"].(float64)
+			message, _ := msg.Data["message"].(string)
+			broadcast(map[string]interface{}{"event": "terminal_activated", "game_id": gameID, "amount": int(amountFloat), "message": message})
+
+		// --- NYT: Terminalen melder tilbage at NFC kortet er scannet ---
+		case "terminal_payment":
+			gameID, _ := msg.Data["game_id"].(string)
+			playerID, _ := msg.Data["player_id"].(string)
+			amountFloat, _ := msg.Data["amount"].(float64)
+			amount := int(amountFloat)
+
+			// Tjekker om kortets ID overhovedet findes i dette spil
+			var balance int
+			err := db.QueryRow("SELECT balance FROM players WHERE id = ? AND game_id = ? AND is_bankrupt = FALSE", playerID, gameID).Scan(&balance)
+			if err != nil {
+				broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "declined", "message": "Ugyldigt kort! Spilleren findes ikke."})
+				continue
+			}
+
+			if balance < amount {
+				broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "declined", "message": fmt.Sprintf("Afvist! %s har ikke penge nok.", getPlayerName(playerID))})
+				continue
+			}
+
+			// Gennemfør betaling (fra Spiller -> Bødekasse, eller bare ud i intetheden. Her lader vi det gå til Bødekassen for sjov!)
+			db.Exec("UPDATE players SET balance = balance - ? WHERE id = ?", amount, playerID)
+			db.Exec("UPDATE games SET parking_pool = parking_pool + ? WHERE id = ?", amount, gameID)
+
+			broadcastLog(gameID, fmt.Sprintf("💳 %s betalte %d kr. på Dankortterminalen!", getPlayerName(playerID), amount))
+			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
+			broadcastPool(gameID)
+
+			broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "approved", "player_name": getPlayerName(playerID), "amount": amount})
+
 		case "start_game":
 			gameID, _ := msg.Data["game_id"].(string)
 			db.Exec("UPDATE games SET status = 'active' WHERE id = ?", gameID)
@@ -234,19 +281,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "end_game":
 			gameID, _ := msg.Data["game_id"].(string)
 			rows, _ := db.Query("SELECT id, name, balance, is_bankrupt FROM players WHERE game_id = ?", gameID)
-
 			type PlayerResult struct {
 				Name     string `json:"name"`
 				NetWorth int    `json:"net_worth"`
 			}
 			var results []PlayerResult
-
 			for rows.Next() {
 				var pID, pName string
 				var bal int
 				var isBankrupt bool
 				rows.Scan(&pID, &pName, &bal, &isBankrupt)
-
 				if isBankrupt {
 					results = append(results, PlayerResult{Name: pName, NetWorth: 0})
 					continue
@@ -263,7 +307,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					} else {
 						netWorth += price
 					}
-					netWorth += houses * 1000 // 1000 kr pr hus
+					netWorth += houses * 1000
 				}
 				pRows.Close()
 				results = append(results, PlayerResult{Name: pName, NetWorth: netWorth})
@@ -271,7 +315,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			rows.Close()
 
 			sort.Slice(results, func(i, j int) bool { return results[i].NetWorth > results[j].NetWorth })
-
 			winner := "Ingen"
 			if len(results) > 0 {
 				winner = results[0].Name
@@ -308,7 +351,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			db.Exec("UPDATE players SET balance = balance - 1000, in_jail = FALSE WHERE id = ?", playerID)
 			db.Exec("UPDATE games SET parking_pool = parking_pool + 1000 WHERE id = ?", gameID)
-
 			broadcastLog(gameID, fmt.Sprintf("🔓 %s har betalt kaution (1000 kr. i Bødekassen)", getPlayerName(playerID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 			broadcastPool(gameID)
@@ -338,10 +380,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Bødekassen er tom!"})
 				continue
 			}
-
 			db.Exec("UPDATE players SET balance = balance + ? WHERE id = ?", pool, playerID)
 			db.Exec("UPDATE games SET parking_pool = 0 WHERE id = ?", gameID)
-
 			broadcastLog(gameID, fmt.Sprintf("🚗💰 %s landede på Gratis Parkering og vandt %d kr.!", getPlayerName(playerID), pool))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 			broadcast(map[string]interface{}{"event": "pool_won", "game_id": gameID, "target_id": playerID, "amount": pool})
@@ -544,8 +584,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcastLog(gameID, fmt.Sprintf("💀 %s GIK FALLIT og overgav alt til %s", getPlayerName(playerID), getPlayerName(targetID)))
 			broadcast(map[string]interface{}{"event": "properties_updated", "game_id": gameID, "properties": getProperties(gameID)})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
-
-			// Slettet auto-vinder kode for Fallit (nu har vi jo Slut Spil-knappen!)
 
 		case "reconnect":
 			gameID, _ := msg.Data["game_id"].(string)

@@ -48,6 +48,15 @@
         #gameOverOverlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); color: white; border-radius: 12px; z-index: 50; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
         #themeToggle { position: fixed; top: 15px; right: 15px; background: transparent; border: none; font-size: 28px; cursor: pointer; z-index: 1000; transition: transform 0.2s;}
         #themeToggle:hover { transform: scale(1.2); }
+
+        /* NYT: TERMINAL STYLING */
+        #terminalScreen { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #111; color: white; z-index: 4000; flex-direction: column; justify-content: center; align-items: center; text-align: center; transition: background 0.3s;}
+        .terminal-ready { background: #2980b9 !important; }
+        .terminal-approved { background: #27ae60 !important; }
+        .terminal-declined { background: #c0392b !important; }
+        .nfc-icon { font-size: 100px; margin: 20px 0; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(0.95); opacity: 0.8; } 50% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0.95); opacity: 0.8; } }
+
         @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
         @keyframes popIn { 0% { transform: translate(-50%, -40%) scale(0.8); opacity: 0;} 100% { transform: translate(-50%, -50%) scale(1); opacity: 1;} }
     </style>
@@ -57,6 +66,14 @@
     <button id="themeToggle" onclick="toggleDarkMode()">🌙</button>
     <div id="modalOverlay"></div>
     
+    <div id="terminalScreen">
+        <h2 style="color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 2px;">Dankortterminal</h2>
+        <div class="nfc-icon" id="terminalIcon">💳</div>
+        <h1 id="terminalStatus" style="font-size: 40px; margin: 20px;">Venter på Banken...</h1>
+        <h2 id="terminalAmount" style="font-size: 60px; margin: 0; color: #f1c40f; display: none;">0 kr.</h2>
+        <p id="terminalMessage" style="font-size: 20px; font-weight: bold; margin-top: 10px;"></p>
+    </div>
+
     <div id="leaderboardOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(44, 62, 80, 0.98); color: white; z-index: 3000; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
         <h1 style="font-size: 50px; margin-bottom: 10px; color: #f1c40f;">🛑 SPILLET ER SLUT!</h1>
         <h2 style="margin-bottom: 30px;">Vinder: <span id="lbWinner">...</span></h2>
@@ -105,6 +122,9 @@
         <input type="text" id="pinInput" placeholder="Indtast 4-cifret PIN" maxlength="4" style="text-align: center;">
         <input type="text" id="nameInput" placeholder="Dit navn (f.eks. Jens)" style="text-align: center;">
         <button class="btn" onclick="joinGame()" id="joinBtn" disabled>Join Spil</button>
+        
+        <button class="btn" style="background: #2c3e50; margin-top: 10px;" onclick="joinAsTerminal()" id="terminalBtn" disabled>💳 Åbn som Dankortterminal</button>
+        
         <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
         <button class="btn btn-secondary" onclick="createGame()" id="createBtn" disabled>Opret Nyt Spil (Admin)</button>
         <button class="btn btn-secondary btn-small" style="width: 100%; margin-top: 10px; background: transparent; color: var(--text-color); border: 2px solid var(--border-color);" onclick="getHistory()">Vis Tidligere Spil 📜</button>
@@ -138,6 +158,14 @@
         <div class="notification notif-success" id="adminNotif"></div>
         <div class="notification notif-error" id="adminErrorNotif"></div>
         
+        <div style="background: var(--yellow-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: left; border: 2px solid var(--yellow-border);">
+            <h3 style="margin-top: 0; color: #2c3e50;">💳 Terminal Betaling</h3>
+            <input type="number" id="adminTerminalAmount" placeholder="Beløb der skal betales (f.eks. 4000)">
+            <input type="text" id="adminTerminalMsg" placeholder="Tekst (f.eks. 'Køb af grund')">
+            <button class="btn" style="background: #2c3e50;" onclick="sendToTerminal()">Send til Terminalen</button>
+            <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 0;">Spilleren skal lægge sit NFC kort på Terminal-skærmen for at betale dette til Banken.</p>
+        </div>
+
         <div style="background: var(--list-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: left;">
             <h3 style="margin-top: 0;">💵 Spiller Handlinger</h3>
             <select id="adminPlayerSelect"><option value="">-- Vælg spiller --</option></select>
@@ -147,6 +175,7 @@
                 <button class="btn btn-small" style="background: #8e44ad;" onclick="drawChanceCard()">Træk Chancekort ❓</button>
                 <button class="btn btn-small" style="background: #27ae60;" onclick="giveJailCard()">Giv Løsladelseskort 🃏</button>
                 <button class="btn btn-small" style="background: #f1c40f; color: #333;" onclick="payoutPool()">Udbetal Bødekasse 🚗</button>
+                <button class="btn btn-small" style="background: #34495e; width: 100%; margin-top: 10px;" onclick="writeNfcCard()">💳 Kod NFC Kort til denne spiller</button>
             </div>
         </div>
 
@@ -256,12 +285,15 @@
         let pendingRent = null;
         let winnerInterval = null;
 
+        // Terminal Variabler
+        let isTerminalMode = false;
+        let pendingTerminalAmount = 0;
+        let ndef = null;
+
         const formatMoney = (amount) => new Intl.NumberFormat('da-DK').format(amount) + " kr.";
 
         let audioCtx = null;
-        function initAudio() {
-            if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-        }
+        function initAudio() { if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } }
 
         function playSound(type) {
             if (!audioCtx) return;
@@ -269,8 +301,7 @@
             
             const osc = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
-            osc.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
+            osc.connect(gainNode); gainNode.connect(audioCtx.destination);
             
             const now = audioCtx.currentTime;
             
@@ -347,12 +378,10 @@
                     socket.send(JSON.stringify({ action: "reconnect", data: { game_id: savedGameId, player_id: localStorage.getItem("matador_playerId") || "", is_host: localStorage.getItem("matador_isHost") === "true" } }));
                 } else {
                     document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
-                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false;
+                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false; document.getElementById("terminalBtn").disabled = false;
                 }
 
-                pingInterval = setInterval(() => {
-                    if (socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify({ action: "ping", data: {} })); }
-                }, 25000);
+                pingInterval = setInterval(() => { if (socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify({ action: "ping", data: {} })); } }, 25000);
             };
 
             socket.onmessage = function(event) {
@@ -381,6 +410,58 @@
                     showScreen(document.getElementById("playerWaitScreen"));
                 }
 
+                // --- NYT: Håndtering af Terminal Forbindelse ---
+                if (data.event === "terminal_joined") {
+                    myGameId = data.game_id;
+                    document.getElementById("terminalScreen").style.display = "flex";
+                    startNfcReader(); // Starter scanneren så snart vi logger ind!
+                }
+
+                // --- NYT: Terminal Modtager Regning ---
+                if (data.event === "terminal_activated" && isTerminalMode && data.game_id === myGameId) {
+                    pendingTerminalAmount = data.amount;
+                    playSound('cash'); // Lige for at få opmærksomhed
+                    const screen = document.getElementById("terminalScreen");
+                    screen.classList.add("terminal-ready");
+                    screen.classList.remove("terminal-approved"); screen.classList.remove("terminal-declined");
+                    
+                    document.getElementById("terminalStatus").innerText = "Afventer Dankort...";
+                    document.getElementById("terminalAmount").innerText = formatMoney(data.amount);
+                    document.getElementById("terminalAmount").style.display = "block";
+                    document.getElementById("terminalMessage").innerText = data.message;
+                    document.getElementById("terminalIcon").innerText = "💳";
+                }
+
+                // --- NYT: Terminal Modtager Svar ---
+                if (data.event === "terminal_result" && isTerminalMode && data.game_id === myGameId) {
+                    const screen = document.getElementById("terminalScreen");
+                    screen.classList.remove("terminal-ready");
+                    
+                    if (data.status === "approved") {
+                        playSound('cash'); triggerConfetti();
+                        screen.classList.add("terminal-approved");
+                        document.getElementById("terminalStatus").innerText = "GODKENDT";
+                        document.getElementById("terminalIcon").innerText = "✅";
+                        document.getElementById("terminalMessage").innerText = `${data.player_name} betalte ${formatMoney(data.amount)}`;
+                    } else {
+                        playSound('error');
+                        screen.classList.add("terminal-declined");
+                        document.getElementById("terminalStatus").innerText = "AFVIST";
+                        document.getElementById("terminalIcon").innerText = "❌";
+                        document.getElementById("terminalMessage").innerText = data.message;
+                    }
+
+                    // Nulstil efter 5 sekunder
+                    setTimeout(() => {
+                        screen.classList.remove("terminal-approved"); screen.classList.remove("terminal-declined");
+                        document.getElementById("terminalStatus").innerText = "Venter på Banken...";
+                        document.getElementById("terminalAmount").style.display = "none";
+                        document.getElementById("terminalMessage").innerText = "";
+                        document.getElementById("terminalIcon").innerText = "💳";
+                        pendingTerminalAmount = 0;
+                    }, 5000);
+                }
+
                 if (data.event === "player_joined" && isHost && data.game_id === myGameId) {
                     allPlayers.push({id: data.player_id, name: data.player_name, balance: 30000, in_jail: false, is_bankrupt: false});
                     renderLobbyList();
@@ -388,7 +469,7 @@
 
                 if (data.event === "game_started" || data.event === "reconnect_success") {
                     if (data.event === "reconnect_success") { myGameId = data.game_id; myPlayerId = data.player_id; isHost = data.is_host; }
-                    if (data.game_id === myGameId) {
+                    if (data.game_id === myGameId && !isTerminalMode) {
                         allPlayers = data.players; allProperties = data.properties || [];
                         if (data.status === "active" || data.event === "game_started") { setupActiveGameScreens(); renderInitialLogs(data.logs); } 
                         else if (data.status === "waiting") { isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); renderLobbyList(); }
@@ -405,12 +486,10 @@
                     playSound('cash'); triggerConfetti(); triggerConfetti(); showNotification("playerNotif", `🚗 TILLYKKE! Du vandt Bødekassen på ${formatMoney(data.amount)}!`, "success");
                 }
 
-                // NYT: LEADERBOARD VISES NÅR BANKEN AFSLUTTER SPILLET
-                if (data.event === "game_ended" && data.game_id === myGameId) {
+                if (data.event === "game_ended" && data.game_id === myGameId && !isTerminalMode) {
                     playSound('cash');
                     document.getElementById("lbWinner").innerText = data.winner;
-                    const list = document.getElementById("lbList");
-                    list.innerHTML = "";
+                    const list = document.getElementById("lbList"); list.innerHTML = "";
                     data.leaderboard.forEach((p, i) => {
                         let medal = i === 0 ? "🥇" : (i === 1 ? "🥈" : (i === 2 ? "🥉" : "👤"));
                         list.innerHTML += `<li style="padding: 5px 0;">${medal} <b>${p.name}</b>: <span style="float:right;">${formatMoney(p.net_worth)}</span></li>`;
@@ -418,28 +497,24 @@
                     document.getElementById("leaderboardOverlay").style.display = "flex";
                     if (!winnerInterval) winnerInterval = setInterval(triggerConfetti, 2500);
                     triggerConfetti(); triggerConfetti(); triggerConfetti();
-                    
-                    // Slet session, så brugerne kan trykke "Tilbage til Start" uden at blive tvunget ind i spillet igen.
                     localStorage.removeItem("matador_gameId"); localStorage.removeItem("matador_playerId"); localStorage.removeItem("matador_isHost");
                 }
 
                 if (data.event === "reconnect_failed") {
                     localStorage.clear(); showScreen(document.getElementById("startScreen"));
                     document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
-                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false;
-                    document.getElementById("cancelReconnectBtn").style.display = "none";
+                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false; document.getElementById("cancelReconnectBtn").style.display = "none";
                     showNotification("playerErrorNotif", "Kunne ikke gendanne. Start et nyt.", "error");
                 }
 
                 if (data.event === "admin_success") {
                     if (data.message.includes("udbetalt") || data.message.includes("betalt")) playSound('cash');
-                    if (isHost) showNotification("adminNotif", data.message, "success");
-                    else showNotification("playerNotif", data.message, "success");
+                    if (isHost) showNotification("adminNotif", data.message, "success"); else showNotification("playerNotif", data.message, "success");
                 }
 
-                if (data.event === "players_updated" && data.game_id === myGameId) { allPlayers = data.players; setupActiveGameScreens(); }
+                if (data.event === "players_updated" && data.game_id === myGameId && !isTerminalMode) { allPlayers = data.players; setupActiveGameScreens(); }
 
-                if (data.event === "property_offered" && data.game_id === myGameId) {
+                if (data.event === "property_offered" && data.game_id === myGameId && !isTerminalMode) {
                     if (!isHost && data.buyer_id === myPlayerId) {
                         pendingOffer = data;
                         document.getElementById("offerTitle").innerText = (data.seller_id === "bank" || !data.seller_id) ? "🏦 Banken tilbyder!" : `🤝 ${data.seller_name} tilbyder!`;
@@ -448,13 +523,13 @@
                     }
                 }
 
-                if (data.event === "property_bought_success" && data.game_id === myGameId) {
+                if (data.event === "property_bought_success" && data.game_id === myGameId && !isTerminalMode) {
                     if (!isHost && data.buyer_id === myPlayerId) { playSound('cash'); triggerConfetti(); showNotification("playerNotif", `🎉 Tillykke! Du ejer nu ${data.property_name}`, "success"); }
                 }
 
-                if (data.event === "properties_updated" && data.game_id === myGameId) { allProperties = data.properties; renderProperties(); }
+                if (data.event === "properties_updated" && data.game_id === myGameId && !isTerminalMode) { allProperties = data.properties; renderProperties(); }
 
-                if (data.event === "rent_demanded" && data.game_id === myGameId) {
+                if (data.event === "rent_demanded" && data.game_id === myGameId && !isTerminalMode) {
                     if (!isHost && data.target_id === myPlayerId) {
                         pendingRent = data; document.getElementById("rentDesc").innerText = `Du er landet på ${data.owner_name}s grund!`;
                         document.getElementById("rentPropName").innerText = data.property_name; document.getElementById("rentAmount").innerText = formatMoney(data.amount);
@@ -462,7 +537,7 @@
                     }
                 }
 
-                if (data.event === "chance_card_drawn" && data.game_id === myGameId) {
+                if (data.event === "chance_card_drawn" && data.game_id === myGameId && !isTerminalMode) {
                     if (!isHost && data.target_id === myPlayerId) {
                         if (data.is_positive) { playSound('cash'); triggerConfetti(); } else if (data.card_text.includes("fængsel")) { playSound('jail'); }
                         document.getElementById("chanceText").innerText = data.card_text; document.getElementById("modalOverlay").style.display = "block"; document.getElementById("chanceModal").style.display = "block";
@@ -486,6 +561,100 @@
 
         connectWebSocket();
 
+        // --- NYT: NFC LOGIK (Web NFC API) ---
+        
+        // 1. Log ind som Terminal
+        function joinAsTerminal() {
+            const pin = document.getElementById("pinInput").value.trim();
+            if (pin.length !== 4) { playSound('error'); return alert("Indtast spillets 4-cifrede PIN kode først."); }
+            
+            // Check om browseren understøtter NFC
+            if (!("NDEFReader" in window)) {
+                alert("Desværre! Din browser/telefon understøtter ikke Web NFC. Brug Chrome på en Android telefon.");
+                return;
+            }
+
+            initAudio();
+            isTerminalMode = true;
+            socket.send(JSON.stringify({ action: "join_terminal", data: { pin: pin } }));
+        }
+
+        // 2. Terminalens læse-loop
+        async function startNfcReader() {
+            try {
+                ndef = new NDEFReader();
+                await ndef.scan();
+                console.log("NFC Scanner aktiv...");
+
+                ndef.addEventListener("reading", ({ message, serialNumber }) => {
+                    // Hvis skærmen ikke er blå (klar til betaling), ignorer tap
+                    if (pendingTerminalAmount === 0) return;
+
+                    const decoder = new TextDecoder();
+                    for (const record of message.records) {
+                        const playerId = decoder.decode(record.data);
+                        console.log("Kort læst! Player ID: " + playerId);
+                        
+                        // Send betalingen til serveren
+                        socket.send(JSON.stringify({
+                            action: "terminal_payment",
+                            data: { game_id: myGameId, player_id: playerId, amount: pendingTerminalAmount }
+                        }));
+
+                        // Nulstil lokalt så vi ikke scanner det 2 gange
+                        pendingTerminalAmount = 0; 
+                    }
+                });
+
+            } catch (error) {
+                alert("NFC Scanner fejlede: " + error);
+            }
+        }
+
+        // 3. Admin funktion til at Skrive (Kode) et kort
+        async function writeNfcCard() {
+            const playerId = document.getElementById("adminPlayerSelect").value;
+            if (!playerId) { playSound('error'); return alert("Vælg en spiller først!"); }
+            
+            if (!("NDEFReader" in window)) {
+                return alert("Du skal bruge Chrome på en Android telefon for at kunne kode kortene.");
+            }
+
+            try {
+                const ndefWriter = new NDEFReader();
+                const playerName = document.getElementById("adminPlayerSelect").options[document.getElementById("adminPlayerSelect").selectedIndex].text;
+                
+                alert(`GØR KLAR: Læg et blankt kort bag på telefonen NU for at kode det til ${playerName}!`);
+                
+                await ndefWriter.write(playerId);
+                
+                playSound('cash');
+                alert(`✅ SUCCES! Kortet tilhører nu ${playerName}.`);
+            } catch (error) {
+                playSound('error');
+                alert("Skrivning fejlede: " + error);
+            }
+        }
+
+        // 4. Admin funktion til at sende beløb til terminal
+        function sendToTerminal() {
+            const amount = parseInt(document.getElementById("adminTerminalAmount").value);
+            const msg = document.getElementById("adminTerminalMsg").value || "Betaling til Banken";
+            
+            if (isNaN(amount) || amount <= 0) { playSound('error'); return alert("Indtast et gyldigt beløb!"); }
+            
+            socket.send(JSON.stringify({
+                action: "activate_terminal",
+                data: { game_id: myGameId, amount: amount, message: msg }
+            }));
+            
+            document.getElementById("adminTerminalAmount").value = "";
+            document.getElementById("adminTerminalMsg").value = "";
+            showNotification("adminNotif", "Regning sendt til Dankortterminalen!", "success");
+        }
+
+
+        // (Resten af dine standard UI funktioner)
         function renderLobbyList() {
             const list = document.getElementById("lobbyPlayers"); list.innerHTML = "";
             allPlayers.forEach(p => { const li = document.createElement("li"); li.innerText = "👤 " + p.name; list.appendChild(li); });
@@ -569,8 +738,7 @@
         function getHistory() { initAudio(); socket.send(JSON.stringify({ action: "get_history", data: {} })); }
         function createGame() { initAudio(); socket.send(JSON.stringify({ action: "create_game", data: {} })); }
         function joinGame() { 
-            initAudio(); 
-            const pin = document.getElementById("pinInput").value.trim(); const name = document.getElementById("nameInput").value.trim(); 
+            initAudio(); const pin = document.getElementById("pinInput").value.trim(); const name = document.getElementById("nameInput").value.trim(); 
             if (pin.length !== 4 || name === "") { playSound('error'); return alert("Udfyld alt."); }
             socket.send(JSON.stringify({ action: "join_game", data: { pin: pin, name: name } })); 
         }
@@ -643,9 +811,8 @@
             }
         }
 
-        // NYT: Banken kan gennemtvinge en afslutning og kåre vinderen ud fra Total Værdi
         function endGame() {
-            if(confirm("Er du sikker? Dette vil afslutte spillet og kåre en vinder baseret på samlet værdi (penge + grunde + huse)!")) {
+            if(confirm("Er du sikker? Dette vil afslutte spillet og kåre en vinder!")) {
                 socket.send(JSON.stringify({ action: "end_game", data: { game_id: myGameId } }));
             }
         }
