@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	_ "modernc.org/sqlite"
@@ -27,6 +28,10 @@ type WSMessage struct {
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
+
+// ---------------------------------------------------------
+// INFRASTRUKTUR & OPRYDNING
+// ---------------------------------------------------------
 
 func generatePIN() string {
 	n, _ := rand.Int(rand.Reader, big.NewInt(9000))
@@ -51,6 +56,44 @@ func broadcast(message map[string]interface{}) {
 	}
 }
 
+func updateActivity(gameID string) {
+	if gameID == "" {
+		return
+	}
+	db.Exec("UPDATE games SET last_activity = CURRENT_TIMESTAMP WHERE id = ?", gameID)
+}
+
+func cleanupRoutine() {
+	for {
+		time.Sleep(1 * time.Hour)
+		log.Println("🧹 Baggrundstjek: Leder efter døde spil...")
+
+		// Slet spil der ikke er "finished" og ikke har haft aktivitet i 4 timer
+		rows, err := db.Query("SELECT id FROM games WHERE status != 'finished' AND last_activity < datetime('now', '-4 hours')")
+		if err != nil {
+			log.Println("Fejl ved oprydning:", err)
+			continue
+		}
+
+		for rows.Next() {
+			var gID string
+			rows.Scan(&gID)
+
+			db.Exec("DELETE FROM players WHERE game_id = ?", gID)
+			db.Exec("DELETE FROM properties WHERE game_id = ?", gID)
+			db.Exec("DELETE FROM logs WHERE game_id = ?", gID)
+			db.Exec("DELETE FROM games WHERE id = ?", gID)
+
+			log.Printf("🗑️ Slettede inaktivt spil: %s", gID)
+		}
+		rows.Close()
+	}
+}
+
+// ---------------------------------------------------------
+// MATADOR REGLER & DATA
+// ---------------------------------------------------------
+
 var ColorGroups = [][]string{
 	{"Rødovrevej", "Hvidovrevej"},
 	{"Roskildevej", "Valby Langgade", "Allégade"},
@@ -64,33 +107,52 @@ var ColorGroups = [][]string{
 
 func seedProperties(gameID string) {
 	props := map[string]int{
-		"Rødovrevej": 1200, "Hvidovrevej": 1200, "Roskildevej": 2000, "Valby Langgade": 2000, "Allégade": 2400,
-		"Frederiksberg Allé": 2800, "Bülowsvej": 2800, "Gammel Kongevej": 3200, "Bernstorffsvej": 3600, "Hellerupvej": 3600,
-		"Strandvejen": 4000, "Trianglen": 4400, "Østerbrogade": 4400, "Grønningen": 4800, "Bredgade": 5200,
-		"Kongens Nytorv": 5200, "Østergade": 5600, "Amagertorv": 6000, "Vimmelskaftet": 6000, "Nygade": 6400,
-		"Frederiksberggade": 7000, "Rådhuspladsen": 8000, "D.F.D.S.": 4000, "Ø.K.": 4000, "Bornholm": 4000,
-		"Mols-Linien": 4000, "Tuborg": 3000, "Carlsberg": 3000,
+		"Rødovrevej": 1200, "Hvidovrevej": 1200,
+		"Roskildevej": 2000, "Valby Langgade": 2000, "Allégade": 2400,
+		"Frederiksberg Allé": 2800, "Bülowsvej": 2800, "Gammel Kongevej": 3200,
+		"Bernstorffsvej": 3600, "Hellerupvej": 3600, "Strandvejen": 4000,
+		"Trianglen": 4400, "Østerbrogade": 4400, "Grønningen": 4800,
+		"Bredgade": 5200, "Kongens Nytorv": 5200, "Østergade": 5600,
+		"Amagertorv": 6000, "Vimmelskaftet": 6000, "Nygade": 6400,
+		"Frederiksberggade": 7000, "Rådhuspladsen": 8000,
+		"D.F.D.S.": 4000, "Ø.K.": 4000, "Bornholm": 4000, "Mols-Linien": 4000,
+		"Tuborg": 3000, "Carlsberg": 3000,
 	}
 	for name, price := range props {
-		db.Exec("INSERT INTO properties (id, game_id, property_name, price, owner_id, houses, is_mortgaged) VALUES (?, ?, ?, ?, ?, ?, ?)", generateID(), gameID, name, price, "", 0, false)
+		db.Exec("INSERT INTO properties (id, game_id, property_name, price, owner_id, houses, is_mortgaged) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			generateID(), gameID, name, price, "", 0, false)
 	}
 }
 
 var RentTable = map[string][]int{
-	"Rødovrevej": {50, 250, 750, 2250, 4000, 6000}, "Hvidovrevej": {50, 250, 750, 2250, 4000, 6000},
-	"Roskildevej": {100, 600, 1800, 5400, 8000, 11000}, "Valby Langgade": {100, 600, 1800, 5400, 8000, 11000},
-	"Allégade": {150, 800, 2000, 6000, 9000, 12000}, "Frederiksberg Allé": {200, 1000, 3000, 9000, 12500, 15000},
-	"Bülowsvej": {200, 1000, 3000, 9000, 12500, 15000}, "Gammel Kongevej": {250, 1250, 3750, 10000, 14000, 18000},
-	"Bernstorffsvej": {300, 1400, 4000, 11000, 15000, 19000}, "Hellerupvej": {300, 1400, 4000, 11000, 15000, 19000},
-	"Strandvejen": {350, 1600, 4400, 12000, 16000, 20000}, "Trianglen": {350, 1800, 5000, 14000, 17500, 21000},
-	"Østerbrogade": {350, 1800, 5000, 14000, 17500, 21000}, "Grønningen": {400, 2000, 6000, 15000, 18500, 22000},
-	"Bredgade": {450, 2200, 6600, 16000, 19500, 23000}, "Kongens Nytorv": {450, 2200, 6600, 16000, 19500, 23000},
-	"Østergade": {500, 2400, 7200, 17000, 20500, 24000}, "Amagertorv": {550, 2600, 7800, 18000, 22000, 25000},
-	"Vimmelskaftet": {550, 2600, 7800, 18000, 22000, 25000}, "Nygade": {600, 3000, 9000, 20000, 24000, 28000},
-	"Frederiksberggade": {700, 3500, 10000, 22000, 26000, 30000}, "Rådhuspladsen": {1000, 4000, 12000, 28000, 34000, 40000},
-	"D.F.D.S.": {500, 500, 500, 500, 500, 500}, "Ø.K.": {500, 500, 500, 500, 500, 500},
-	"Bornholm": {500, 500, 500, 500, 500, 500}, "Mols-Linien": {500, 500, 500, 500, 500, 500},
-	"Tuborg": {400, 400, 400, 400, 400, 400}, "Carlsberg": {400, 400, 400, 400, 400, 400},
+	"Rødovrevej":         {50, 250, 750, 2250, 4000, 6000},
+	"Hvidovrevej":        {50, 250, 750, 2250, 4000, 6000},
+	"Roskildevej":        {100, 600, 1800, 5400, 8000, 11000},
+	"Valby Langgade":     {100, 600, 1800, 5400, 8000, 11000},
+	"Allégade":           {150, 800, 2000, 6000, 9000, 12000},
+	"Frederiksberg Allé": {200, 1000, 3000, 9000, 12500, 15000},
+	"Bülowsvej":          {200, 1000, 3000, 9000, 12500, 15000},
+	"Gammel Kongevej":    {250, 1250, 3750, 10000, 14000, 18000},
+	"Bernstorffsvej":     {300, 1400, 4000, 11000, 15000, 19000},
+	"Hellerupvej":        {300, 1400, 4000, 11000, 15000, 19000},
+	"Strandvejen":        {350, 1600, 4400, 12000, 16000, 20000},
+	"Trianglen":          {350, 1800, 5000, 14000, 17500, 21000},
+	"Østerbrogade":       {350, 1800, 5000, 14000, 17500, 21000},
+	"Grønningen":         {400, 2000, 6000, 15000, 18500, 22000},
+	"Bredgade":           {450, 2200, 6600, 16000, 19500, 23000},
+	"Kongens Nytorv":     {450, 2200, 6600, 16000, 19500, 23000},
+	"Østergade":          {500, 2400, 7200, 17000, 20500, 24000},
+	"Amagertorv":         {550, 2600, 7800, 18000, 22000, 25000},
+	"Vimmelskaftet":      {550, 2600, 7800, 18000, 22000, 25000},
+	"Nygade":             {600, 3000, 9000, 20000, 24000, 28000},
+	"Frederiksberggade":  {700, 3500, 10000, 22000, 26000, 30000},
+	"Rådhuspladsen":      {1000, 4000, 12000, 28000, 34000, 40000},
+	"D.F.D.S.":           {500, 500, 500, 500, 500, 500},
+	"Ø.K.":               {500, 500, 500, 500, 500, 500},
+	"Bornholm":           {500, 500, 500, 500, 500, 500},
+	"Mols-Linien":        {500, 500, 500, 500, 500, 500},
+	"Tuborg":             {400, 400, 400, 400, 400, 400},
+	"Carlsberg":          {400, 400, 400, 400, 400, 400},
 }
 
 type ChanceCard struct {
@@ -122,16 +184,28 @@ var ChanceCardsDeck = []ChanceCard{
 	{"Vurderingsstyrelsen har lavet rod! 🏚️ Efterbetal 800 kr. pr. hus og 2.300 kr. pr. hotel.", "property_tax", 0},
 }
 
+// ---------------------------------------------------------
+// DATABASE HJÆLPERE
+// ---------------------------------------------------------
+
 func getProperties(gameID string) []map[string]interface{} {
 	rows, _ := db.Query("SELECT property_name, price, owner_id, houses, is_mortgaged FROM properties WHERE game_id = ?", gameID)
 	defer rows.Close()
 	var properties []map[string]interface{}
+
 	for rows.Next() {
 		var name, owner string
 		var price, houses int
 		var isMortgaged bool
+
 		rows.Scan(&name, &price, &owner, &houses, &isMortgaged)
-		properties = append(properties, map[string]interface{}{"name": name, "price": price, "owner_id": owner, "houses": houses, "is_mortgaged": isMortgaged})
+		properties = append(properties, map[string]interface{}{
+			"name":         name,
+			"price":        price,
+			"owner_id":     owner,
+			"houses":       houses,
+			"is_mortgaged": isMortgaged,
+		})
 	}
 	return properties
 }
@@ -140,12 +214,21 @@ func getPlayers(gameID string) []map[string]interface{} {
 	rows, _ := db.Query("SELECT id, name, balance, in_jail, is_bankrupt, get_out_of_jail_cards FROM players WHERE game_id = ?", gameID)
 	defer rows.Close()
 	var players []map[string]interface{}
+
 	for rows.Next() {
 		var id, name string
 		var balance, jailCards int
 		var inJail, isBankrupt bool
+
 		rows.Scan(&id, &name, &balance, &inJail, &isBankrupt, &jailCards)
-		players = append(players, map[string]interface{}{"id": id, "name": name, "balance": balance, "in_jail": inJail, "is_bankrupt": isBankrupt, "jail_cards": jailCards})
+		players = append(players, map[string]interface{}{
+			"id":          id,
+			"name":        name,
+			"balance":     balance,
+			"in_jail":     inJail,
+			"is_bankrupt": isBankrupt,
+			"jail_cards":  jailCards,
+		})
 	}
 	return players
 }
@@ -168,6 +251,7 @@ func getLogs(gameID string) []string {
 	rows, _ := db.Query("SELECT message FROM (SELECT id, message FROM logs WHERE game_id = ? ORDER BY id DESC LIMIT 25) ORDER BY id ASC", gameID)
 	defer rows.Close()
 	var logs []string
+
 	for rows.Next() {
 		var msg string
 		rows.Scan(&msg)
@@ -182,15 +266,26 @@ func broadcastPool(gameID string) {
 	broadcast(map[string]interface{}{"event": "pool_updated", "game_id": gameID, "pool": pool})
 }
 
+// ---------------------------------------------------------
+// WEBSOCKET LOGIK
+// ---------------------------------------------------------
+
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
+
 	clientsMutex.Lock()
 	clients[conn] = true
 	clientsMutex.Unlock()
-	defer func() { clientsMutex.Lock(); delete(clients, conn); clientsMutex.Unlock(); conn.Close() }()
+
+	defer func() {
+		clientsMutex.Lock()
+		delete(clients, conn)
+		clientsMutex.Unlock()
+		conn.Close()
+	}()
 
 	for {
 		var msg WSMessage
@@ -204,9 +299,12 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "ping":
 			continue
 
+		// --- SPIL ADMINISTRATION ---
+
 		case "get_history":
 			rows, _ := db.Query("SELECT substr(created_at, 1, 16), winner_name FROM games WHERE status = 'finished' ORDER BY created_at DESC LIMIT 5")
 			var history []map[string]string
+
 			for rows.Next() {
 				var date, winner string
 				rows.Scan(&date, &winner)
@@ -226,87 +324,88 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			pin, _ := msg.Data["pin"].(string)
 			playerName, _ := msg.Data["name"].(string)
 			var gameID string
+
 			if err := db.QueryRow("SELECT id FROM games WHERE pin_code = ? AND status = 'waiting'", pin).Scan(&gameID); err != nil {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Ugyldig PIN-kode."})
 				continue
 			}
+
 			playerID := generateID()
-			db.Exec("INSERT INTO players (id, game_id, name, balance, in_jail, is_bankrupt, get_out_of_jail_cards) VALUES (?, ?, ?, ?, ?, ?, ?)", playerID, gameID, playerName, 30000, false, false, 0)
+			db.Exec("INSERT INTO players (id, game_id, name, balance, in_jail, is_bankrupt, get_out_of_jail_cards) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				playerID, gameID, playerName, 30000, false, false, 0)
+
+			updateActivity(gameID)
 			conn.WriteJSON(map[string]interface{}{"event": "join_success", "player_id": playerID, "game_id": gameID, "name": playerName})
 			broadcast(map[string]interface{}{"event": "player_joined", "game_id": gameID, "player_id": playerID, "player_name": playerName})
 
-		// --- NYT: Lader terminalen joine BÅDE i waiting og active ---
-		case "join_terminal":
-			pin, _ := msg.Data["pin"].(string)
-			var gameID, status string
-			if err := db.QueryRow("SELECT id, status FROM games WHERE pin_code = ? AND status != 'finished'", pin).Scan(&gameID, &status); err != nil {
-				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Ugyldig PIN-kode."})
-				continue
-			}
-			conn.WriteJSON(map[string]interface{}{"event": "terminal_joined", "game_id": gameID, "status": status})
-
-		case "activate_terminal":
-			gameID, _ := msg.Data["game_id"].(string)
-			amountFloat, _ := msg.Data["amount"].(float64)
-			message, _ := msg.Data["message"].(string)
-			broadcast(map[string]interface{}{"event": "terminal_activated", "game_id": gameID, "amount": int(amountFloat), "message": message})
-
-		case "terminal_write_request":
+		case "reconnect":
 			gameID, _ := msg.Data["game_id"].(string)
 			playerID, _ := msg.Data["player_id"].(string)
-			playerName := getPlayerName(playerID)
-			broadcast(map[string]interface{}{"event": "terminal_write_mode", "game_id": gameID, "player_id": playerID, "player_name": playerName})
+			isHost, _ := msg.Data["is_host"].(bool)
 
-		case "terminal_write_success":
-			gameID, _ := msg.Data["game_id"].(string)
-			playerName, _ := msg.Data["player_name"].(string)
-			broadcastLog(gameID, fmt.Sprintf("💳 Et fysisk Dankort blev udstedt til %s!", playerName))
-
-		case "terminal_payment":
-			gameID, _ := msg.Data["game_id"].(string)
-			playerID, _ := msg.Data["player_id"].(string)
-			amountFloat, _ := msg.Data["amount"].(float64)
-			amount := int(amountFloat)
-			var balance int
-			err := db.QueryRow("SELECT balance FROM players WHERE id = ? AND game_id = ? AND is_bankrupt = FALSE", playerID, gameID).Scan(&balance)
-			if err != nil {
-				broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "declined", "message": "Ugyldigt kort! Spilleren findes ikke."})
+			var status, pin string
+			if err := db.QueryRow("SELECT status, pin_code FROM games WHERE id = ?", gameID).Scan(&status, &pin); err != nil {
+				conn.WriteJSON(map[string]interface{}{"event": "reconnect_failed"})
 				continue
 			}
 
-			if balance < amount {
-				broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "declined", "message": fmt.Sprintf("Afvist! %s har ikke råd.", getPlayerName(playerID))})
+			players := getPlayers(gameID)
+			var myName string
+			var myBalance, jailCards int
+			var inJail, isBankrupt bool
+
+			for _, p := range players {
+				if p["id"] == playerID {
+					myName = p["name"].(string)
+					myBalance = p["balance"].(int)
+					inJail = p["in_jail"].(bool)
+					isBankrupt = p["is_bankrupt"].(bool)
+					jailCards = p["jail_cards"].(int)
+				}
+			}
+
+			if !isHost && myName == "" {
+				conn.WriteJSON(map[string]interface{}{"event": "reconnect_failed"})
 				continue
 			}
 
-			db.Exec("UPDATE players SET balance = balance - ? WHERE id = ?", amount, playerID)
-			db.Exec("UPDATE games SET parking_pool = parking_pool + ? WHERE id = ?", amount, gameID)
-
-			broadcastLog(gameID, fmt.Sprintf("💳 %s betalte %d kr. på Dankortterminalen!", getPlayerName(playerID), amount))
-			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
+			updateActivity(gameID)
+			conn.WriteJSON(map[string]interface{}{
+				"event": "reconnect_success", "game_id": gameID, "status": status, "pin": pin,
+				"is_host": isHost, "player_id": playerID, "name": myName, "balance": myBalance,
+				"in_jail": inJail, "is_bankrupt": isBankrupt, "jail_cards": jailCards,
+				"players": players, "properties": getProperties(gameID), "logs": getLogs(gameID),
+			})
 			broadcastPool(gameID)
-			broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "approved", "player_name": getPlayerName(playerID), "amount": amount})
 
 		case "start_game":
 			gameID, _ := msg.Data["game_id"].(string)
 			db.Exec("UPDATE games SET status = 'active' WHERE id = ?", gameID)
+			updateActivity(gameID)
 			broadcastLog(gameID, "🏁 Spillet er startet!")
-			broadcast(map[string]interface{}{"event": "game_started", "game_id": gameID, "players": getPlayers(gameID), "properties": getProperties(gameID), "logs": getLogs(gameID)})
+			broadcast(map[string]interface{}{
+				"event": "game_started", "game_id": gameID,
+				"players": getPlayers(gameID), "properties": getProperties(gameID), "logs": getLogs(gameID),
+			})
 			broadcastPool(gameID)
 
 		case "end_game":
 			gameID, _ := msg.Data["game_id"].(string)
+			updateActivity(gameID)
 			rows, _ := db.Query("SELECT id, name, balance, is_bankrupt FROM players WHERE game_id = ?", gameID)
+
 			type PlayerResult struct {
 				Name     string `json:"name"`
 				NetWorth int    `json:"net_worth"`
 			}
 			var results []PlayerResult
+
 			for rows.Next() {
 				var pID, pName string
 				var bal int
 				var isBankrupt bool
 				rows.Scan(&pID, &pName, &bal, &isBankrupt)
+
 				if isBankrupt {
 					results = append(results, PlayerResult{Name: pName, NetWorth: 0})
 					continue
@@ -340,9 +439,71 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcastLog(gameID, fmt.Sprintf("🛑 Spillet blev afsluttet af Banken! %s vandt med en formue på %d kr.", winner, results[0].NetWorth))
 			broadcast(map[string]interface{}{"event": "game_ended", "game_id": gameID, "leaderboard": results, "winner": winner})
 
+		// --- NFC TERMINAL FUNKTIONER ---
+
+		case "join_terminal":
+			pin, _ := msg.Data["pin"].(string)
+			var gameID, status string
+			if err := db.QueryRow("SELECT id, status FROM games WHERE pin_code = ? AND status != 'finished'", pin).Scan(&gameID, &status); err != nil {
+				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Ugyldig PIN-kode."})
+				continue
+			}
+			updateActivity(gameID)
+			conn.WriteJSON(map[string]interface{}{"event": "terminal_joined", "game_id": gameID, "status": status})
+
+		case "activate_terminal":
+			gameID, _ := msg.Data["game_id"].(string)
+			amountFloat, _ := msg.Data["amount"].(float64)
+			message, _ := msg.Data["message"].(string)
+			updateActivity(gameID)
+			broadcast(map[string]interface{}{"event": "terminal_activated", "game_id": gameID, "amount": int(amountFloat), "message": message})
+
+		case "terminal_write_request":
+			gameID, _ := msg.Data["game_id"].(string)
+			playerID, _ := msg.Data["player_id"].(string)
+			playerName := getPlayerName(playerID)
+			updateActivity(gameID)
+			broadcast(map[string]interface{}{"event": "terminal_write_mode", "game_id": gameID, "player_id": playerID, "player_name": playerName})
+
+		case "terminal_write_success":
+			gameID, _ := msg.Data["game_id"].(string)
+			playerName, _ := msg.Data["player_name"].(string)
+			updateActivity(gameID)
+			broadcastLog(gameID, fmt.Sprintf("💳 Et fysisk Dankort blev udstedt til %s!", playerName))
+
+		case "terminal_payment":
+			gameID, _ := msg.Data["game_id"].(string)
+			playerID, _ := msg.Data["player_id"].(string)
+			amountFloat, _ := msg.Data["amount"].(float64)
+			amount := int(amountFloat)
+
+			var balance int
+			err := db.QueryRow("SELECT balance FROM players WHERE id = ? AND game_id = ? AND is_bankrupt = FALSE", playerID, gameID).Scan(&balance)
+			if err != nil {
+				broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "declined", "message": "Ugyldigt kort! Spilleren findes ikke."})
+				continue
+			}
+
+			if balance < amount {
+				broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "declined", "message": fmt.Sprintf("Afvist! %s har ikke råd.", getPlayerName(playerID))})
+				continue
+			}
+
+			db.Exec("UPDATE players SET balance = balance - ? WHERE id = ?", amount, playerID)
+			db.Exec("UPDATE games SET parking_pool = parking_pool + ? WHERE id = ?", amount, gameID)
+
+			updateActivity(gameID)
+			broadcastLog(gameID, fmt.Sprintf("💳 %s betalte %d kr. på Dankortterminalen!", getPlayerName(playerID), amount))
+			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
+			broadcastPool(gameID)
+			broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "approved", "player_name": getPlayerName(playerID), "amount": amount})
+
+		// --- SPILLER & BANK AKTIONER ---
+
 		case "give_pass_start_bonus":
 			playerID, _ := msg.Data["player_id"].(string)
 			gameID, _ := msg.Data["game_id"].(string)
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET balance = balance + 4000 WHERE id = ?", playerID)
 			broadcastLog(gameID, fmt.Sprintf("🎁 %s passerede START (+4.000 kr.)", getPlayerName(playerID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
@@ -351,6 +512,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "send_to_jail":
 			playerID, _ := msg.Data["player_id"].(string)
 			gameID, _ := msg.Data["game_id"].(string)
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET in_jail = TRUE WHERE id = ?", playerID)
 			broadcastLog(gameID, fmt.Sprintf("🚔 %s er blevet smidt i fængsel!", getPlayerName(playerID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
@@ -361,12 +523,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			gameID, _ := msg.Data["game_id"].(string)
 			var currentBalance int
 			db.QueryRow("SELECT balance FROM players WHERE id = ?", playerID).Scan(&currentBalance)
+
 			if currentBalance < 1000 {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Du har ikke 1.000 kr. til kaution!"})
 				continue
 			}
+
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET balance = balance - 1000, in_jail = FALSE WHERE id = ?", playerID)
 			db.Exec("UPDATE games SET parking_pool = parking_pool + 1000 WHERE id = ?", gameID)
+
 			broadcastLog(gameID, fmt.Sprintf("🔓 %s har betalt kaution (1000 kr. i Bødekassen)", getPlayerName(playerID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 			broadcastPool(gameID)
@@ -375,6 +541,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "give_jail_card":
 			playerID, _ := msg.Data["player_id"].(string)
 			gameID, _ := msg.Data["game_id"].(string)
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET get_out_of_jail_cards = get_out_of_jail_cards + 1 WHERE id = ?", playerID)
 			broadcastLog(gameID, fmt.Sprintf("🃏 %s modtog et Løsladelseskort!", getPlayerName(playerID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
@@ -383,6 +550,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "use_jail_card":
 			playerID, _ := msg.Data["player_id"].(string)
 			gameID, _ := msg.Data["game_id"].(string)
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET in_jail = FALSE, get_out_of_jail_cards = get_out_of_jail_cards - 1 WHERE id = ?", playerID)
 			broadcastLog(gameID, fmt.Sprintf("🔓 %s brugte et Løsladelseskort!", getPlayerName(playerID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
@@ -392,12 +560,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			gameID, _ := msg.Data["game_id"].(string)
 			var pool int
 			db.QueryRow("SELECT parking_pool FROM games WHERE id = ?", gameID).Scan(&pool)
+
 			if pool == 0 {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Bødekassen er tom!"})
 				continue
 			}
+
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET balance = balance + ? WHERE id = ?", pool, playerID)
 			db.Exec("UPDATE games SET parking_pool = 0 WHERE id = ?", gameID)
+
 			broadcastLog(gameID, fmt.Sprintf("🚗💰 %s landede på Gratis Parkering og vandt %d kr.!", getPlayerName(playerID), pool))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 			broadcast(map[string]interface{}{"event": "pool_won", "game_id": gameID, "target_id": playerID, "amount": pool})
@@ -406,8 +578,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "draw_chance_card":
 			playerID, _ := msg.Data["player_id"].(string)
 			gameID, _ := msg.Data["game_id"].(string)
+
 			n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(ChanceCardsDeck))))
 			card := ChanceCardsDeck[n.Int64()]
+
 			var changeAmount int = 0
 			isPositive := false
 
@@ -416,12 +590,15 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				db.Exec("UPDATE players SET balance = balance + ? WHERE id = ?", card.Value, playerID)
 				changeAmount = card.Value
 				isPositive = true
+
 			case "sub_money":
 				db.Exec("UPDATE players SET balance = balance - ? WHERE id = ?", card.Value, playerID)
 				db.Exec("UPDATE games SET parking_pool = parking_pool + ? WHERE id = ?", card.Value, gameID)
 				changeAmount = -card.Value
+
 			case "go_to_jail":
 				db.Exec("UPDATE players SET in_jail = TRUE WHERE id = ?", playerID)
+
 			case "property_tax":
 				rows, _ := db.Query("SELECT houses FROM properties WHERE game_id = ? AND owner_id = ?", gameID, playerID)
 				totalTax := 0
@@ -429,9 +606,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					var h int
 					rows.Scan(&h)
 					if h == 5 {
-						totalTax += 2300
+						totalTax += 2300 // Hotel
 					} else if h > 0 {
-						totalTax += (h * 800)
+						totalTax += (h * 800) // Huse
 					}
 				}
 				rows.Close()
@@ -440,16 +617,21 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				changeAmount = -totalTax
 				card.Text = fmt.Sprintf("%s\n(Din samlede regning blev: %d kr.)", card.Text, totalTax)
 			}
+
+			updateActivity(gameID)
 			broadcastLog(gameID, fmt.Sprintf("❓ %s trak et Chancekort!", getPlayerName(playerID)))
 			broadcast(map[string]interface{}{"event": "chance_card_drawn", "game_id": gameID, "target_id": playerID, "card_text": card.Text, "is_positive": isPositive, "amount_changed": changeAmount})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 			broadcastPool(gameID)
+
+		// --- EJENDOMME & TRANSAKTIONER ---
 
 		case "build_house":
 			gameID, _ := msg.Data["game_id"].(string)
 			propName, _ := msg.Data["property_name"].(string)
 			playerID, _ := msg.Data["player_id"].(string)
 
+			// 1. Tjek om grunden tilhører en farvegruppe (ikke rederi/bryggeri)
 			var group []string
 			for _, g := range ColorGroups {
 				for _, p := range g {
@@ -459,11 +641,13 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+
 			if group == nil {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Man kan ikke bygge huse på rederier eller bryggerier!"})
 				continue
 			}
 
+			// 2. Tjek monopol (ejer spilleren alle i gruppen?)
 			ownsAll := true
 			for _, p := range group {
 				var owner string
@@ -473,6 +657,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+
 			if !ownsAll {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Du skal eje alle grunde af denne farve for at bygge!"})
 				continue
@@ -491,8 +676,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET balance = balance - 1000 WHERE id = ?", playerID)
 			db.Exec("UPDATE properties SET houses = houses + 1 WHERE game_id = ? AND property_name = ?", gameID, propName)
+
 			broadcastLog(gameID, fmt.Sprintf("🏗️ %s byggede på %s", getPlayerName(playerID), propName))
 			broadcast(map[string]interface{}{"event": "properties_updated", "game_id": gameID, "properties": getProperties(gameID)})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
@@ -512,6 +699,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 			amount := RentTable[propName][houses]
 
+			// Hvis der er 0 huse, tjekker vi om der er monopol for at kræve dobbelt leje
 			if houses == 0 {
 				for _, g := range ColorGroups {
 					inGroup := false
@@ -521,6 +709,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 							break
 						}
 					}
+
 					if inGroup {
 						ownsAll := true
 						for _, p := range g {
@@ -532,14 +721,18 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 							}
 						}
 						if ownsAll {
-							amount = amount * 2
+							amount = amount * 2 // Dobbelt husleje!
 						}
 						break
 					}
 				}
 			}
 
-			broadcast(map[string]interface{}{"event": "rent_demanded", "game_id": gameID, "target_id": msg.Data["target_id"], "owner_id": ownerID, "owner_name": msg.Data["owner_name"], "property_name": propName, "amount": amount})
+			updateActivity(gameID)
+			broadcast(map[string]interface{}{
+				"event": "rent_demanded", "game_id": gameID, "target_id": msg.Data["target_id"],
+				"owner_id": ownerID, "owner_name": msg.Data["owner_name"], "property_name": propName, "amount": amount,
+			})
 
 		case "pay_rent":
 			gameID, _ := msg.Data["game_id"].(string)
@@ -547,16 +740,21 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			toID, _ := msg.Data["to_id"].(string)
 			amountFloat, _ := msg.Data["amount"].(float64)
 			amount := int(amountFloat)
+
 			var currentBalance int
 			if err := db.QueryRow("SELECT balance FROM players WHERE id = ?", fromID).Scan(&currentBalance); err != nil || currentBalance < amount {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Du har ikke penge nok! Pantsæt noget først."})
 				continue
 			}
+
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET balance = balance - ? WHERE id = ?", amount, fromID)
 			db.Exec("UPDATE players SET balance = balance + ? WHERE id = ?", amount, toID)
+
 			broadcastLog(gameID, fmt.Sprintf("🏠 %s betalte %d kr. i husleje til %s", getPlayerName(fromID), amount, getPlayerName(toID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 
+			// Fortæller frontend at huslejen blev betalt, så modal kan lukkes
 			broadcast(map[string]interface{}{"event": "rent_paid_success", "game_id": gameID, "from_id": fromID, "to_id": toID})
 			conn.WriteJSON(map[string]interface{}{"event": "admin_success", "message": "Husleje betalt!"})
 
@@ -564,11 +762,15 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			gameID, _ := msg.Data["game_id"].(string)
 			propName, _ := msg.Data["property_name"].(string)
 			playerID, _ := msg.Data["player_id"].(string)
+
 			var price int
 			db.QueryRow("SELECT price FROM properties WHERE game_id = ? AND property_name = ?", gameID, propName).Scan(&price)
 			payout := price / 2
+
+			updateActivity(gameID)
 			db.Exec("UPDATE properties SET is_mortgaged = TRUE WHERE game_id = ? AND property_name = ?", gameID, propName)
 			db.Exec("UPDATE players SET balance = balance + ? WHERE id = ?", payout, playerID)
+
 			broadcastLog(gameID, fmt.Sprintf("🛑 %s pantsatte %s", getPlayerName(playerID), propName))
 			broadcast(map[string]interface{}{"event": "properties_updated", "game_id": gameID, "properties": getProperties(gameID)})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
@@ -577,16 +779,21 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			gameID, _ := msg.Data["game_id"].(string)
 			propName, _ := msg.Data["property_name"].(string)
 			playerID, _ := msg.Data["player_id"].(string)
+
 			var price, currentBalance int
 			db.QueryRow("SELECT price FROM properties WHERE game_id = ? AND property_name = ?", gameID, propName).Scan(&price)
 			db.QueryRow("SELECT balance FROM players WHERE id = ?", playerID).Scan(&currentBalance)
 			cost := int(float64(price) * 0.55)
+
 			if currentBalance < cost {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Du har ikke råd!"})
 				continue
 			}
+
+			updateActivity(gameID)
 			db.Exec("UPDATE properties SET is_mortgaged = FALSE WHERE game_id = ? AND property_name = ?", gameID, propName)
 			db.Exec("UPDATE players SET balance = balance - ? WHERE id = ?", cost, playerID)
+
 			broadcastLog(gameID, fmt.Sprintf("✅ %s købte %s fri", getPlayerName(playerID), propName))
 			broadcast(map[string]interface{}{"event": "properties_updated", "game_id": gameID, "properties": getProperties(gameID)})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
@@ -597,22 +804,28 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			toPlayerID, _ := msg.Data["to_player_id"].(string)
 			amountFloat, _ := msg.Data["amount"].(float64)
 			amount := int(amountFloat)
+
 			if amount <= 0 {
 				continue
 			}
+
 			var currentBalance int
 			if err := db.QueryRow("SELECT balance FROM players WHERE id = ?", fromPlayerID).Scan(&currentBalance); err != nil || currentBalance < amount {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Afvist: Du har ikke nok penge på kontoen!"})
 				continue
 			}
+
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET balance = balance - ? WHERE id = ?", amount, fromPlayerID)
 			if toPlayerID != "bank" {
 				db.Exec("UPDATE players SET balance = balance + ? WHERE id = ?", amount, toPlayerID)
 			}
+
 			broadcastLog(gameID, fmt.Sprintf("💸 %s overførte %d kr. til %s", getPlayerName(fromPlayerID), amount, getPlayerName(toPlayerID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 
 		case "offer_property":
+			updateActivity(msg.Data["game_id"].(string))
 			broadcast(map[string]interface{}{
 				"event": "property_offered", "game_id": msg.Data["game_id"], "buyer_id": msg.Data["buyer_id"], "buyer_name": getPlayerName(msg.Data["buyer_id"].(string)),
 				"seller_id": msg.Data["seller_id"], "seller_name": msg.Data["seller_name"], "property_name": msg.Data["property_name"], "price": msg.Data["price"],
@@ -625,17 +838,20 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			propName, _ := msg.Data["property_name"].(string)
 			priceFloat, _ := msg.Data["price"].(float64)
 			price := int(priceFloat)
+
 			var currentBalance int
 			if err := db.QueryRow("SELECT balance FROM players WHERE id = ?", buyerID).Scan(&currentBalance); err != nil || currentBalance < price {
 				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Afvist: Du har ikke råd!"})
 				continue
 			}
 
+			updateActivity(gameID)
 			db.Exec("UPDATE players SET balance = balance - ? WHERE id = ?", price, buyerID)
 			if sellerID != "bank" && sellerID != "" {
 				db.Exec("UPDATE players SET balance = balance + ? WHERE id = ?", price, sellerID)
 			}
 			db.Exec("UPDATE properties SET owner_id = ? WHERE game_id = ? AND property_name = ?", buyerID, gameID, propName)
+
 			broadcastLog(gameID, fmt.Sprintf("📜 %s købte %s af %s for %d kr.", getPlayerName(buyerID), propName, getPlayerName(sellerID), price))
 			broadcast(map[string]interface{}{"event": "property_bought_success", "game_id": gameID, "buyer_id": buyerID, "property_name": propName})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
@@ -645,8 +861,12 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			gameID, _ := msg.Data["game_id"].(string)
 			playerID, _ := msg.Data["player_id"].(string)
 			targetID, _ := msg.Data["target_id"].(string)
+
+			updateActivity(gameID)
+
 			var balance int
 			db.QueryRow("SELECT balance FROM players WHERE id = ?", playerID).Scan(&balance)
+
 			if balance > 0 {
 				db.Exec("UPDATE players SET balance = 0 WHERE id = ?", playerID)
 				if targetID != "bank" && targetID != "" {
@@ -658,48 +878,19 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			} else {
 				db.Exec("UPDATE properties SET owner_id = ? WHERE game_id = ? AND owner_id = ?", targetID, gameID, playerID)
 			}
+
 			db.Exec("UPDATE players SET is_bankrupt = TRUE WHERE id = ?", playerID)
+
 			broadcastLog(gameID, fmt.Sprintf("💀 %s GIK FALLIT og overgav alt til %s", getPlayerName(playerID), getPlayerName(targetID)))
 			broadcast(map[string]interface{}{"event": "properties_updated", "game_id": gameID, "properties": getProperties(gameID)})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
-
-		case "reconnect":
-			gameID, _ := msg.Data["game_id"].(string)
-			playerID, _ := msg.Data["player_id"].(string)
-			isHost, _ := msg.Data["is_host"].(bool)
-			var status, pin string
-			if err := db.QueryRow("SELECT status, pin_code FROM games WHERE id = ?", gameID).Scan(&status, &pin); err != nil {
-				conn.WriteJSON(map[string]interface{}{"event": "reconnect_failed"})
-				continue
-			}
-
-			players := getPlayers(gameID)
-			var myName string
-			var myBalance, jailCards int
-			var inJail, isBankrupt bool
-			for _, p := range players {
-				if p["id"] == playerID {
-					myName = p["name"].(string)
-					myBalance = p["balance"].(int)
-					inJail = p["in_jail"].(bool)
-					isBankrupt = p["is_bankrupt"].(bool)
-					jailCards = p["jail_cards"].(int)
-				}
-			}
-			if !isHost && myName == "" {
-				conn.WriteJSON(map[string]interface{}{"event": "reconnect_failed"})
-				continue
-			}
-
-			conn.WriteJSON(map[string]interface{}{
-				"event": "reconnect_success", "game_id": gameID, "status": status, "pin": pin,
-				"is_host": isHost, "player_id": playerID, "name": myName, "balance": myBalance, "in_jail": inJail, "is_bankrupt": isBankrupt, "jail_cards": jailCards,
-				"players": players, "properties": getProperties(gameID), "logs": getLogs(gameID),
-			})
-			broadcastPool(gameID)
 		}
 	}
 }
+
+// ---------------------------------------------------------
+// MAIN / OPSTART
+// ---------------------------------------------------------
 
 func main() {
 	var err error
@@ -708,16 +899,49 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
+
 	createTablesSQL := `
-	CREATE TABLE IF NOT EXISTS games (id TEXT PRIMARY KEY, pin_code TEXT, status TEXT, parking_pool INTEGER DEFAULT 0, winner_name TEXT DEFAULT '', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-	CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, game_id TEXT, name TEXT, balance INTEGER, in_jail BOOLEAN DEFAULT FALSE, get_out_of_jail_cards INTEGER DEFAULT 0, is_bankrupt BOOLEAN DEFAULT FALSE);
-	CREATE TABLE IF NOT EXISTS properties (id TEXT PRIMARY KEY, game_id TEXT, property_name TEXT, price INTEGER, owner_id TEXT, houses INTEGER DEFAULT 0, is_mortgaged BOOLEAN DEFAULT FALSE);
-	CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT, message TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);`
+	CREATE TABLE IF NOT EXISTS games (
+		id TEXT PRIMARY KEY, 
+		pin_code TEXT, 
+		status TEXT, 
+		parking_pool INTEGER DEFAULT 0, 
+		winner_name TEXT DEFAULT '', 
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP, 
+		last_activity DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS players (
+		id TEXT PRIMARY KEY, 
+		game_id TEXT, 
+		name TEXT, 
+		balance INTEGER, 
+		in_jail BOOLEAN DEFAULT FALSE, 
+		get_out_of_jail_cards INTEGER DEFAULT 0, 
+		is_bankrupt BOOLEAN DEFAULT FALSE
+	);
+	CREATE TABLE IF NOT EXISTS properties (
+		id TEXT PRIMARY KEY, 
+		game_id TEXT, 
+		property_name TEXT, 
+		price INTEGER, 
+		owner_id TEXT, 
+		houses INTEGER DEFAULT 0, 
+		is_mortgaged BOOLEAN DEFAULT FALSE
+	);
+	CREATE TABLE IF NOT EXISTS logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, 
+		game_id TEXT, 
+		message TEXT, 
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+
 	db.Exec(createTablesSQL)
 
+	// Start oprydningstråden i baggrunden
+	go cleanupRoutine()
+
 	http.HandleFunc("/ws", handleWebSocket)
-	fs := http.FileServer(http.Dir("./static"))
-	http.Handle("/", fs)
+	http.Handle("/", http.FileServer(http.Dir("./static")))
 
 	log.Println("Matador-serveren kører på http://localhost:8080")
 	http.ListenAndServe(":8080", nil)
