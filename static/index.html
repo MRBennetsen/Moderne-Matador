@@ -5,35 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Moderne Matador</title>
     <style>
-        /* --- NYT: CSS Variabler for Dark Mode --- */
         :root {
-            --bg-color: #f4f4f9;
-            --card-bg: #ffffff;
-            --text-color: #333333;
-            --text-muted: #7f8c8d;
-            --border-color: #dddddd;
-            --input-bg: #ffffff;
-            --input-text: #333333;
-            --list-bg: #ecf0f1;
-            --yellow-bg: #fdfae6;
-            --yellow-border: #f1c40f;
-            --log-bg: #ffffff;
-            --prop-mortgaged-bg: #fdfdfd;
+            --bg-color: #f4f4f9; --card-bg: #ffffff; --text-color: #333333; --text-muted: #7f8c8d;
+            --border-color: #dddddd; --input-bg: #ffffff; --input-text: #333333; --list-bg: #ecf0f1;
+            --yellow-bg: #fdfae6; --yellow-border: #f1c40f; --log-bg: #ffffff; --prop-mortgaged-bg: #fdfdfd;
         }
 
         body.dark-mode {
-            --bg-color: #121212;
-            --card-bg: #1e1e1e;
-            --text-color: #e0e0e0;
-            --text-muted: #95a5a6;
-            --border-color: #444444;
-            --input-bg: #2a2a2a;
-            --input-text: #e0e0e0;
-            --list-bg: #2c2c2c;
-            --yellow-bg: #3a3314;
-            --yellow-border: #8c7300;
-            --log-bg: #1e1e1e;
-            --prop-mortgaged-bg: #2c2c2c;
+            --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --text-muted: #95a5a6;
+            --border-color: #444444; --input-bg: #2a2a2a; --input-text: #e0e0e0; --list-bg: #2c2c2c;
+            --yellow-bg: #3a3314; --yellow-border: #8c7300; --log-bg: #1e1e1e; --prop-mortgaged-bg: #2c2c2c;
         }
 
         body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; transition: background 0.3s, color 0.3s; }
@@ -57,7 +38,7 @@
         .notif-error { background: #c0392b; animation: shake 0.4s; }
 
         .modal-box { display: none; background: var(--card-bg); padding: 20px; border-radius: 8px; margin-top: 15px; border: 2px solid var(--border-color); transition: background 0.3s; }
-        .prop-item { background: var(--card-bg); padding: 15px; border-radius: 6px; border-left: 5px solid #2980b9; margin-bottom: 10px; text-align: left; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-top: 1px solid var(--border-color); border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); }
+        .prop-item { background: var(--card-bg); padding: 15px; border-radius: 6px; border-left: 5px solid #2980b9; margin-bottom: 10px; text-align: left; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border: 1px solid var(--border-color); border-left: 5px solid #2980b9; }
         .prop-mortgaged { border-left: 5px solid #95a5a6; background: var(--prop-mortgaged-bg); color: var(--text-muted); }
         
         .center-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--card-bg); padding: 30px; border-radius: 16px; z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.5); width: 90%; max-width: 350px; text-align: center; display: none; }
@@ -275,9 +256,8 @@
     </div>
 
     <script>
-        const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
-        const socket = new WebSocket(protocol + window.location.host + "/ws");
-        
+        let socket;
+        let pingInterval;
         let myGameId = null, myPlayerId = null, isHost = false;
         let allPlayers = [], allProperties = [];
         let pendingOffer = null, selectedPropPrice = 0, currentSellingProp = "", currentRentProp = "";
@@ -286,12 +266,9 @@
 
         const formatMoney = (amount) => new Intl.NumberFormat('da-DK').format(amount) + " kr.";
 
-        // --- NYT: Lyd-motoren (Web Audio API) ---
         let audioCtx = null;
         function initAudio() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
+            if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
         }
 
         function playSound(type) {
@@ -306,32 +283,19 @@
             const now = audioCtx.currentTime;
             
             if (type === 'cash') {
-                // Ka-Ching! To hurtige høje toner
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(1200, now);
-                osc.frequency.setValueAtTime(1600, now + 0.1);
-                gainNode.gain.setValueAtTime(0.1, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.type = 'sine'; osc.frequency.setValueAtTime(1200, now); osc.frequency.setValueAtTime(1600, now + 0.1);
+                gainNode.gain.setValueAtTime(0.1, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
                 osc.start(now); osc.stop(now + 0.2);
             } else if (type === 'jail') {
-                // Fængsel Thud! Tung dyb tone
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(100, now);
-                osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
-                gainNode.gain.setValueAtTime(0.2, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.type = 'square'; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
+                gainNode.gain.setValueAtTime(0.2, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
                 osc.start(now); osc.stop(now + 0.3);
             } else if (type === 'error') {
-                // Buzzer! Skarp og hurtig
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(150, now);
-                gainNode.gain.setValueAtTime(0.1, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-                osc.start(now); osc.stop(now + 0.2);
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2); osc.start(now); osc.stop(now + 0.2);
             }
         }
 
-        // --- NYT: Dark Mode Toggle ---
         function toggleDarkMode() {
             document.body.classList.toggle('dark-mode');
             const isDark = document.body.classList.contains('dark-mode');
@@ -339,10 +303,8 @@
             document.getElementById('themeToggle').innerText = isDark ? '☀️' : '🌙';
         }
         
-        // Tjek om brugeren havde Dark Mode tændt sidst
         if (localStorage.getItem('matador_darkmode') === 'true') {
-            document.body.classList.add('dark-mode');
-            document.getElementById('themeToggle').innerText = '☀️';
+            document.body.classList.add('dark-mode'); document.getElementById('themeToggle').innerText = '☀️';
         }
 
         window.onload = function() {
@@ -354,10 +316,7 @@
             }
         };
 
-        function forceReset() {
-            localStorage.clear();
-            window.location.href = window.location.pathname;
-        }
+        function forceReset() { localStorage.clear(); window.location.href = window.location.pathname; }
 
         function triggerConfetti() {
             const colors = ['#2ecc71', '#f1c40f', '#e74c3c', '#3498db', '#9b59b6'];
@@ -384,134 +343,157 @@
             if (logs && logs.length > 0) { logs.forEach(msg => appendLog(msg)); }
         }
 
-        socket.onopen = function() {
-            const savedGameId = localStorage.getItem("matador_gameId");
-            if (savedGameId) {
-                document.getElementById("connStatus").innerText = "Gendanner... 🔄"; document.getElementById("connStatus").style.color = "orange";
-                document.getElementById("cancelReconnectBtn").style.display = "block"; 
-                socket.send(JSON.stringify({ action: "reconnect", data: { game_id: savedGameId, player_id: localStorage.getItem("matador_playerId") || "", is_host: localStorage.getItem("matador_isHost") === "true" } }));
-            } else {
-                document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
-                document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false;
-            }
-        };
+        function connectWebSocket() {
+            const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+            socket = new WebSocket(protocol + window.location.host + "/ws");
 
-        socket.onmessage = function(event) {
-            const data = JSON.parse(event.data);
+            socket.onopen = function() {
+                const savedGameId = localStorage.getItem("matador_gameId");
+                if (savedGameId) {
+                    document.getElementById("connStatus").innerText = "Gendanner... 🔄"; document.getElementById("connStatus").style.color = "orange";
+                    document.getElementById("cancelReconnectBtn").style.display = "block"; 
+                    socket.send(JSON.stringify({ action: "reconnect", data: { game_id: savedGameId, player_id: localStorage.getItem("matador_playerId") || "", is_host: localStorage.getItem("matador_isHost") === "true" } }));
+                } else {
+                    document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
+                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false;
+                }
 
-            if (data.event === "game_created") {
-                isHost = true; myGameId = data.game_id;
-                localStorage.setItem("matador_gameId", myGameId); localStorage.setItem("matador_isHost", "true");
-                showScreen(document.getElementById("lobbyScreen")); 
-                document.getElementById("pinCode").innerText = data.pin;
+                pingInterval = setInterval(() => {
+                    if (socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify({ action: "ping", data: {} })); }
+                }, 25000);
+            };
 
-                const joinUrl = `https://matador.bennetsen.dk/?pin=${data.pin}`;
-                document.getElementById("qrCodeImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(joinUrl)}`;
-                document.getElementById("qrCodeImage").style.display = "inline-block";
-            }
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
 
-            if (data.event === "join_success") {
-                isHost = false; myGameId = data.game_id; myPlayerId = data.player_id;
-                localStorage.setItem("matador_gameId", myGameId); localStorage.setItem("matador_playerId", myPlayerId); localStorage.setItem("matador_isHost", "false");
-                showScreen(document.getElementById("playerWaitScreen"));
-            }
+                if (data.event === "game_created") {
+                    isHost = true; myGameId = data.game_id;
+                    localStorage.setItem("matador_gameId", myGameId); localStorage.setItem("matador_isHost", "true");
+                    showScreen(document.getElementById("lobbyScreen")); 
+                    document.getElementById("pinCode").innerText = data.pin;
 
-            if (data.event === "player_joined" && isHost && data.game_id === myGameId) {
-                allPlayers.push({id: data.player_id, name: data.player_name, balance: 30000, in_jail: false, is_bankrupt: false});
-                renderLobbyList();
-            }
+                    const joinUrl = `https://matador.bennetsen.dk/?pin=${data.pin}`;
+                    document.getElementById("qrCodeImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(joinUrl)}`;
+                    document.getElementById("qrCodeImage").style.display = "inline-block";
+                }
 
-            if (data.event === "game_started" || data.event === "reconnect_success") {
-                if(data.game_id === myGameId) {
-                    if (data.event === "reconnect_success") { myPlayerId = data.player_id; isHost = data.is_host; }
-                    allPlayers = data.players; allProperties = data.properties || [];
-                    if (data.status === "active" || data.event === "game_started") { setupActiveGameScreens(); renderInitialLogs(data.logs); } 
-                    else if (data.status === "waiting") { 
-                        isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); 
-                        renderLobbyList(); 
+                if (data.event === "join_success") {
+                    isHost = false; myGameId = data.game_id; myPlayerId = data.player_id;
+                    localStorage.setItem("matador_gameId", myGameId); localStorage.setItem("matador_playerId", myPlayerId); localStorage.setItem("matador_isHost", "false");
+                    showScreen(document.getElementById("playerWaitScreen"));
+                }
+
+                if (data.event === "player_joined" && isHost && data.game_id === myGameId) {
+                    allPlayers.push({id: data.player_id, name: data.player_name, balance: 30000, in_jail: false, is_bankrupt: false});
+                    renderLobbyList();
+                }
+
+                if (data.event === "game_started" || data.event === "reconnect_success") {
+                    if(data.game_id === myGameId) {
+                        if (data.event === "reconnect_success") { myPlayerId = data.player_id; isHost = data.is_host; }
+                        allPlayers = data.players; allProperties = data.properties || [];
+                        if (data.status === "active" || data.event === "game_started") { setupActiveGameScreens(); renderInitialLogs(data.logs); } 
+                        else if (data.status === "waiting") { 
+                            isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); 
+                            renderLobbyList(); 
+                        }
                     }
                 }
-            }
 
-            if (data.event === "new_log" && data.game_id === myGameId) { appendLog(data.message); }
+                if (data.event === "new_log" && data.game_id === myGameId) { appendLog(data.message); }
 
-            if (data.event === "pool_updated" && data.game_id === myGameId) {
-                document.querySelectorAll(".poolAmount").forEach(el => el.innerText = formatMoney(data.pool));
-                document.querySelectorAll(".pool-banner").forEach(el => el.style.display = "block");
-            }
-            
-            if (data.event === "pool_won" && data.game_id === myGameId && data.target_id === myPlayerId) {
-                playSound('cash');
-                triggerConfetti(); triggerConfetti();
-                showNotification("playerNotif", `🚗 TILLYKKE! Du vandt Bødekassen på ${formatMoney(data.amount)}!`, "success");
-            }
-
-            if (data.event === "game_over_winner" && data.game_id === myGameId) {
-                playSound('cash');
-                document.getElementById("winnerText").innerText = `${data.winner_name} ejer nu ALT!`;
-                document.getElementById("winnerOverlay").style.display = "flex";
-                if (!winnerInterval) winnerInterval = setInterval(triggerConfetti, 2500);
-                triggerConfetti(); triggerConfetti(); triggerConfetti();
-            }
-
-            if (data.event === "reconnect_failed") {
-                localStorage.clear(); showScreen(document.getElementById("startScreen"));
-                document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
-                document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false;
-                document.getElementById("cancelReconnectBtn").style.display = "none";
-                showNotification("playerErrorNotif", "Kunne ikke gendanne det gamle spil. Start et nyt.", "error");
-            }
-
-            if (data.event === "admin_success") {
-                if (data.message.includes("udbetalt") || data.message.includes("betalt")) playSound('cash');
-                if (isHost) showNotification("adminNotif", data.message, "success");
-                else showNotification("playerNotif", data.message, "success");
-            }
-
-            if (data.event === "players_updated" && data.game_id === myGameId) {
-                allPlayers = data.players; setupActiveGameScreens(); 
-            }
-
-            if (data.event === "property_offered" && data.game_id === myGameId) {
-                if (!isHost && data.buyer_id === myPlayerId) {
-                    pendingOffer = data;
-                    document.getElementById("offerTitle").innerText = (data.seller_id === "bank" || !data.seller_id) ? "🏦 Banken tilbyder!" : `🤝 ${data.seller_name} tilbyder!`;
-                    document.getElementById("offerPropName").innerText = data.property_name; document.getElementById("offerPropPrice").innerText = formatMoney(data.price);
-                    document.getElementById("modalOverlay").style.display = "block"; document.getElementById("offerModal").style.display = "block";
+                if (data.event === "pool_updated" && data.game_id === myGameId) {
+                    document.querySelectorAll(".poolAmount").forEach(el => el.innerText = formatMoney(data.pool));
+                    document.querySelectorAll(".pool-banner").forEach(el => el.style.display = "block");
                 }
-            }
-
-            if (data.event === "property_bought_success" && data.game_id === myGameId) {
-                if (!isHost && data.buyer_id === myPlayerId) { playSound('cash'); triggerConfetti(); showNotification("playerNotif", `🎉 Tillykke! Du ejer nu ${data.property_name}`, "success"); }
-            }
-
-            if (data.event === "properties_updated" && data.game_id === myGameId) {
-                allProperties = data.properties; renderProperties();
-            }
-
-            if (data.event === "rent_demanded" && data.game_id === myGameId) {
-                if (!isHost && data.target_id === myPlayerId) {
-                    pendingRent = data; document.getElementById("rentDesc").innerText = `Du er landet på ${data.owner_name}s grund!`;
-                    document.getElementById("rentPropName").innerText = data.property_name; document.getElementById("rentAmount").innerText = formatMoney(data.amount);
-                    document.getElementById("modalOverlay").style.display = "block"; document.getElementById("rentModal").style.display = "block";
+                
+                if (data.event === "pool_won" && data.game_id === myGameId && data.target_id === myPlayerId) {
+                    playSound('cash'); triggerConfetti(); triggerConfetti();
+                    showNotification("playerNotif", `🚗 TILLYKKE! Du vandt Bødekassen på ${formatMoney(data.amount)}!`, "success");
                 }
-            }
 
-            if (data.event === "chance_card_drawn" && data.game_id === myGameId) {
-                if (!isHost && data.target_id === myPlayerId) {
-                    if (data.is_positive) { playSound('cash'); triggerConfetti(); }
-                    else if (data.card_text.includes("fængsel")) { playSound('jail'); }
-                    document.getElementById("chanceText").innerText = data.card_text;
-                    document.getElementById("modalOverlay").style.display = "block"; document.getElementById("chanceModal").style.display = "block";
-                } else if (isHost) { showNotification("adminNotif", "Kortet er trukket!", "success"); }
-            }
+                if (data.event === "game_over_winner" && data.game_id === myGameId) {
+                    playSound('cash');
+                    document.getElementById("winnerText").innerText = `${data.winner_name} ejer nu ALT!`;
+                    document.getElementById("winnerOverlay").style.display = "flex";
+                    if (!winnerInterval) winnerInterval = setInterval(triggerConfetti, 2500);
+                    triggerConfetti(); triggerConfetti(); triggerConfetti();
+                }
 
-            if (data.event === "error") {
-                playSound('error');
-                if (isHost) { showNotification("adminErrorNotif", data.message, "error"); } 
-                else { showNotification("playerErrorNotif", data.message, "error"); document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none"; }
-            }
-        };
+                if (data.event === "reconnect_failed") {
+                    localStorage.clear(); showScreen(document.getElementById("startScreen"));
+                    document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
+                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false;
+                    document.getElementById("cancelReconnectBtn").style.display = "none";
+                    showNotification("playerErrorNotif", "Kunne ikke gendanne. Start et nyt.", "error");
+                }
+
+                if (data.event === "admin_success") {
+                    if (data.message.includes("udbetalt") || data.message.includes("betalt")) playSound('cash');
+                    if (isHost) showNotification("adminNotif", data.message, "success");
+                    else showNotification("playerNotif", data.message, "success");
+                }
+
+                if (data.event === "players_updated" && data.game_id === myGameId) {
+                    allPlayers = data.players; setupActiveGameScreens(); 
+                }
+
+                if (data.event === "property_offered" && data.game_id === myGameId) {
+                    if (!isHost && data.buyer_id === myPlayerId) {
+                        pendingOffer = data;
+                        document.getElementById("offerTitle").innerText = (data.seller_id === "bank" || !data.seller_id) ? "🏦 Banken tilbyder!" : `🤝 ${data.seller_name} tilbyder!`;
+                        document.getElementById("offerPropName").innerText = data.property_name; document.getElementById("offerPropPrice").innerText = formatMoney(data.price);
+                        document.getElementById("modalOverlay").style.display = "block"; document.getElementById("offerModal").style.display = "block";
+                    }
+                }
+
+                if (data.event === "property_bought_success" && data.game_id === myGameId) {
+                    if (!isHost && data.buyer_id === myPlayerId) { playSound('cash'); triggerConfetti(); showNotification("playerNotif", `🎉 Tillykke! Du ejer nu ${data.property_name}`, "success"); }
+                }
+
+                if (data.event === "properties_updated" && data.game_id === myGameId) {
+                    allProperties = data.properties; renderProperties();
+                }
+
+                if (data.event === "rent_demanded" && data.game_id === myGameId) {
+                    if (!isHost && data.target_id === myPlayerId) {
+                        pendingRent = data; document.getElementById("rentDesc").innerText = `Du er landet på ${data.owner_name}s grund!`;
+                        document.getElementById("rentPropName").innerText = data.property_name; document.getElementById("rentAmount").innerText = formatMoney(data.amount);
+                        document.getElementById("modalOverlay").style.display = "block"; document.getElementById("rentModal").style.display = "block";
+                    }
+                }
+
+                if (data.event === "chance_card_drawn" && data.game_id === myGameId) {
+                    if (!isHost && data.target_id === myPlayerId) {
+                        if (data.is_positive) { playSound('cash'); triggerConfetti(); }
+                        else if (data.card_text.includes("fængsel")) { playSound('jail'); }
+                        document.getElementById("chanceText").innerText = data.card_text;
+                        document.getElementById("modalOverlay").style.display = "block"; document.getElementById("chanceModal").style.display = "block";
+                    } else if (isHost) { showNotification("adminNotif", "Kortet er trukket!", "success"); }
+                }
+
+                if (data.event === "error") {
+                    playSound('error');
+                    if (isHost) { showNotification("adminErrorNotif", data.message, "error"); } 
+                    else { showNotification("playerErrorNotif", data.message, "error"); document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none"; }
+                }
+            };
+
+            socket.onclose = function(e) {
+                clearInterval(pingInterval);
+                console.log("Forbindelse mistet. Prøver at genoprette...");
+                document.getElementById("connStatus").innerText = "Forbindelse mistet! Genopretter... 🔴";
+                document.getElementById("connStatus").style.color = "#c0392b";
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            socket.onerror = function(err) {
+                socket.close(); 
+            };
+        }
+
+        // Init the connection
+        connectWebSocket();
 
         function renderLobbyList() {
             const list = document.getElementById("lobbyPlayers"); list.innerHTML = "";
@@ -531,15 +513,11 @@
                 updateAdminPropPrice();
             } else {
                 const myList = document.getElementById("myPropertiesList"); myList.innerHTML = ""; let hasProps = false;
-                
                 allProperties.forEach(prop => {
                     if (prop.owner_id === myPlayerId) {
                         hasProps = true; let buttonsHTML = ""; let cssClass = "prop-item";
-                        
                         let housesDisplay = "";
-                        if (prop.houses >= 5) housesDisplay = " 🏨";
-                        else if (prop.houses > 0) housesDisplay = " " + "🏠".repeat(prop.houses);
-
+                        if (prop.houses >= 5) housesDisplay = " 🏨"; else if (prop.houses > 0) housesDisplay = " " + "🏠".repeat(prop.houses);
                         let title = `📜 <b style="font-size: 18px;">${prop.name}${housesDisplay}</b><br><span style="font-size: 14px; font-weight: normal; color: var(--text-muted);">Nypris: ${prop.price} kr.</span>`;
 
                         if (prop.is_mortgaged) {
@@ -571,10 +549,7 @@
                 const select1 = document.getElementById("adminPlayerSelect"), select2 = document.getElementById("adminPropPlayerSelect"), list = document.getElementById("adminPlayerList");
                 select1.innerHTML = '<option value="">-- Vælg spiller --</option>'; select2.innerHTML = '<option value="">-- Vælg Køber --</option>'; list.innerHTML = "";
                 allPlayers.forEach(p => {
-                    if (!p.is_bankrupt) {
-                        select1.innerHTML += `<option value="${p.id}">${p.name}</option>`; 
-                        select2.innerHTML += `<option value="${p.id}">${p.name}</option>`;
-                    }
+                    if (!p.is_bankrupt) { select1.innerHTML += `<option value="${p.id}">${p.name}</option>`; select2.innerHTML += `<option value="${p.id}">${p.name}</option>`; }
                     const statusTag = p.is_bankrupt ? `<span style="color: var(--text-muted);">💀 Fallit</span> ` : (p.in_jail ? `<span style="color: #c0392b;">🚔 Fængsel</span> ` : "");
                     const nameDisplay = p.is_bankrupt ? `<s style="color: var(--text-muted);">👤 ${p.name}</s>` : `👤 ${p.name}`;
                     list.innerHTML += `<li id="admin-li-${p.id}"><span>${nameDisplay}</span> <span style="text-align: right">${statusTag} <b id="admin-bal-${p.id}">${formatMoney(p.balance)}</b></span></li>`;
@@ -591,15 +566,10 @@
                     
                     if (myData.in_jail) { 
                         if(document.getElementById("jailBanner").style.display !== "block") playSound('jail');
-                        document.getElementById("jailBanner").style.display = "block"; 
-                        document.getElementById("bailBtn").style.display = "block"; 
-                        if (myData.jail_cards > 0) { document.getElementById("jailCardBtn").style.display = "block"; }
-                        else { document.getElementById("jailCardBtn").style.display = "none"; }
-                    } 
-                    else { 
-                        document.getElementById("jailBanner").style.display = "none"; 
-                        document.getElementById("bailBtn").style.display = "none"; 
-                        document.getElementById("jailCardBtn").style.display = "none"; 
+                        document.getElementById("jailBanner").style.display = "block"; document.getElementById("bailBtn").style.display = "block"; 
+                        if (myData.jail_cards > 0) { document.getElementById("jailCardBtn").style.display = "block"; } else { document.getElementById("jailCardBtn").style.display = "none"; }
+                    } else { 
+                        document.getElementById("jailBanner").style.display = "none"; document.getElementById("bailBtn").style.display = "none"; document.getElementById("jailCardBtn").style.display = "none"; 
                     }
                 }
                 
@@ -618,7 +588,6 @@
 
         function showNotification(elId, txt, type) { const el = document.getElementById(elId); el.innerText = txt; el.style.display = "block"; setTimeout(() => el.style.display = "none", 4000); }
         
-        // --- Initier Audio ved første interaktion ---
         function createGame() { initAudio(); socket.send(JSON.stringify({ action: "create_game", data: {} })); }
         function joinGame() { 
             initAudio(); 
