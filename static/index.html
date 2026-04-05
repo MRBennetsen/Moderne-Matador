@@ -311,13 +311,36 @@
         };
         const propOrder = Object.keys(propColors);
 
+        // --- NYT: HJÆLPEFUNKTION TIL AT TJEKKE MONOPOL I FRONTEND ---
+        const colorGroupsList = [
+            ["Rødovrevej", "Hvidovrevej"],
+            ["Roskildevej", "Valby Langgade", "Allégade"],
+            ["Frederiksberg Allé", "Bülowsvej", "Gammel Kongevej"],
+            ["Bernstorffsvej", "Hellerupvej", "Strandvejen"],
+            ["Trianglen", "Østerbrogade", "Grønningen"],
+            ["Bredgade", "Kongens Nytorv", "Østergade"],
+            ["Amagertorv", "Vimmelskaftet", "Nygade"],
+            ["Frederiksberggade", "Rådhuspladsen"]
+        ];
+
+        function hasMonopoly(propName, ownerId) {
+            for (let group of colorGroupsList) {
+                if (group.includes(propName)) {
+                    for (let p of group) {
+                        let propData = allProperties.find(x => x.name === p);
+                        if (!propData || propData.owner_id !== ownerId) return false;
+                    }
+                    return true;
+                }
+            }
+            return false; // Rederier/Bryggerier falder her (må aldrig bygge)
+        }
+
         let audioCtx = null;
         function initAudio() { 
             try {
                 if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } 
-            } catch(e) {
-                console.log("Lydfejl (ofte pga manglende bruger-interaktion før start): ", e);
-            }
+            } catch(e) { console.log(e); }
         }
 
         function playSound(type) {
@@ -379,36 +402,22 @@
             });
             html += '</div><p style="margin-top:40px; color:var(--text-muted); font-size: 20px; animation: pulse 2s infinite;">Berør skærmen for at vende tilbage...</p>';
             
-            ss.innerHTML = html;
-            ss.style.display = 'flex';
+            ss.innerHTML = html; ss.style.display = 'flex';
         }
 
         function toggleDarkMode() {
-            document.body.classList.toggle('dark-mode');
-            const isDark = document.body.classList.contains('dark-mode');
-            localStorage.setItem('matador_darkmode', isDark);
-            document.getElementById('themeToggle').innerText = isDark ? '☀️' : '🌙';
+            document.body.classList.toggle('dark-mode'); const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('matador_darkmode', isDark); document.getElementById('themeToggle').innerText = isDark ? '☀️' : '🌙';
         }
-        
-        if (localStorage.getItem('matador_darkmode') === 'true') {
-            document.body.classList.add('dark-mode'); 
-            document.getElementById('themeToggle').innerText = '☀️';
-        }
+        if (localStorage.getItem('matador_darkmode') === 'true') { document.body.classList.add('dark-mode'); document.getElementById('themeToggle').innerText = '☀️'; }
 
         window.onload = function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const pinParam = urlParams.get('pin');
-            if (pinParam) {
-                document.getElementById("pinInput").value = pinParam;
-                document.getElementById("nameInput").focus(); 
-            }
+            const urlParams = new URLSearchParams(window.location.search); const pinParam = urlParams.get('pin');
+            if (pinParam) { document.getElementById("pinInput").value = pinParam; document.getElementById("nameInput").focus(); }
             resetAdminIdle();
         };
 
-        function forceReset() { 
-            localStorage.clear(); 
-            window.location.href = window.location.pathname; 
-        }
+        function forceReset() { localStorage.clear(); window.location.href = window.location.pathname; }
 
         function triggerConfetti() {
             const colors = ['#2ecc71', '#f1c40f', '#e74c3c', '#3498db', '#9b59b6'];
@@ -442,11 +451,8 @@
             document.getElementById("terminalIcon").innerText = icon;
             document.getElementById("terminalMessage").innerText = msgText;
             if (amount > 0) {
-                document.getElementById("terminalAmount").innerText = formatMoney(amount);
-                document.getElementById("terminalAmount").style.display = "block";
-            } else {
-                document.getElementById("terminalAmount").style.display = "none";
-            }
+                document.getElementById("terminalAmount").innerText = formatMoney(amount); document.getElementById("terminalAmount").style.display = "block";
+            } else { document.getElementById("terminalAmount").style.display = "none"; }
         }
 
         function connectWebSocket() {
@@ -456,16 +462,12 @@
             socket.onopen = function() {
                 const savedGameId = localStorage.getItem("matador_gameId");
                 if (savedGameId) {
-                    document.getElementById("connStatus").innerText = "Gendanner... 🔄"; 
-                    document.getElementById("connStatus").style.color = "orange";
+                    document.getElementById("connStatus").innerText = "Gendanner... 🔄"; document.getElementById("connStatus").style.color = "orange";
                     document.getElementById("cancelReconnectBtn").style.display = "block"; 
                     socket.send(JSON.stringify({ action: "reconnect", data: { game_id: savedGameId, player_id: localStorage.getItem("matador_playerId") || "", is_host: localStorage.getItem("matador_isHost") === "true" } }));
                 } else {
-                    document.getElementById("connStatus").innerText = "Online 🟢"; 
-                    document.getElementById("connStatus").style.color = "green";
-                    document.getElementById("createBtn").disabled = false; 
-                    document.getElementById("joinBtn").disabled = false; 
-                    document.getElementById("terminalBtn").disabled = false;
+                    document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
+                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false; document.getElementById("terminalBtn").disabled = false;
                 }
                 pingInterval = setInterval(() => { if (socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify({ action: "ping", data: {} })); } }, 25000);
             };
@@ -484,8 +486,7 @@
                 if (data.event === "game_created") {
                     isHost = true; myGameId = data.game_id;
                     localStorage.setItem("matador_gameId", myGameId); localStorage.setItem("matador_isHost", "true");
-                    showScreen(document.getElementById("lobbyScreen")); 
-                    document.getElementById("pinCode").innerText = data.pin;
+                    showScreen(document.getElementById("lobbyScreen")); document.getElementById("pinCode").innerText = data.pin;
                     const joinUrl = `https://matador.bennetsen.dk/?pin=${data.pin}`;
                     document.getElementById("qrCodeImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(joinUrl)}`;
                     document.getElementById("qrCodeImage").style.display = "inline-block";
@@ -499,9 +500,7 @@
                 }
 
                 if (data.event === "terminal_joined") {
-                    myGameId = data.game_id; 
-                    document.getElementById("terminalScreen").style.display = "flex"; 
-                    startNfcReader();
+                    myGameId = data.game_id; document.getElementById("terminalScreen").style.display = "flex"; startNfcReader();
                 }
 
                 if (data.event === "terminal_write_mode" && isTerminalMode && data.game_id === myGameId) {
@@ -570,23 +569,15 @@
                 }
 
                 if (data.event === "player_joined" && isHost && data.game_id === myGameId) {
-                    allPlayers.push({id: data.player_id, name: data.player_name, balance: 30000, in_jail: false, is_bankrupt: false}); 
-                    renderLobbyList();
+                    allPlayers.push({id: data.player_id, name: data.player_name, balance: 30000, in_jail: false, is_bankrupt: false}); renderLobbyList();
                 }
 
                 if (data.event === "game_started" || data.event === "reconnect_success") {
-                    if (data.event === "reconnect_success") { 
-                        myGameId = data.game_id; myPlayerId = data.player_id; isHost = data.is_host; resetAdminIdle(); 
-                    }
+                    if (data.event === "reconnect_success") { myGameId = data.game_id; myPlayerId = data.player_id; isHost = data.is_host; resetAdminIdle(); }
                     if (data.game_id === myGameId && !isTerminalMode) {
                         allPlayers = data.players; allProperties = data.properties || [];
-                        if (data.status === "active" || data.event === "game_started") { 
-                            setupActiveGameScreens(); renderInitialLogs(data.logs); 
-                        } 
-                        else if (data.status === "waiting") { 
-                            isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); 
-                            renderLobbyList(); 
-                        }
+                        if (data.status === "active" || data.event === "game_started") { setupActiveGameScreens(); renderInitialLogs(data.logs); } 
+                        else if (data.status === "waiting") { isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); renderLobbyList(); }
                     }
                 }
 
@@ -607,15 +598,10 @@
                 }
 
                 if (data.event === "reconnect_failed") {
-                    localStorage.clear(); 
-                    showScreen(document.getElementById("startScreen"));
-                    document.getElementById("connStatus").innerText = "Online 🟢"; 
-                    document.getElementById("connStatus").style.color = "green";
-                    document.getElementById("createBtn").disabled = false; 
-                    document.getElementById("joinBtn").disabled = false; 
-                    document.getElementById("terminalBtn").disabled = false;
-                    document.getElementById("cancelReconnectBtn").style.display = "none";
-                    alert("Kunne ikke gendanne det forrige spil. Start venligst et nyt.");
+                    localStorage.clear(); showScreen(document.getElementById("startScreen"));
+                    document.getElementById("connStatus").innerText = "Online 🟢"; document.getElementById("connStatus").style.color = "green";
+                    document.getElementById("createBtn").disabled = false; document.getElementById("joinBtn").disabled = false; document.getElementById("cancelReconnectBtn").style.display = "none";
+                    showNotification("playerErrorNotif", "Kunne ikke gendanne. Start et nyt.", "error");
                 }
 
                 if (data.event === "admin_success") {
@@ -648,12 +634,10 @@
         }
         connectWebSocket();
 
-        // -------------------- KANP FUNKTIONER --------------------
         function getHistory() { initAudio(); socket.send(JSON.stringify({ action: "get_history", data: {} })); }
         function createGame() { initAudio(); socket.send(JSON.stringify({ action: "create_game", data: {} })); }
         function joinGame() { 
-            initAudio(); 
-            const pin = document.getElementById("pinInput").value.trim(); const name = document.getElementById("nameInput").value.trim(); 
+            initAudio(); const pin = document.getElementById("pinInput").value.trim(); const name = document.getElementById("nameInput").value.trim(); 
             if (pin.length !== 4 || name === "") { playSound('error'); return alert("Udfyld alt."); }
             socket.send(JSON.stringify({ action: "join_game", data: { pin: pin, name: name } })); 
         }
@@ -665,7 +649,6 @@
         function payoutPool() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) return alert("Vælg spilleren der landede på Gratis Parkering!"); socket.send(JSON.stringify({ action: "payout_pool", data: { game_id: myGameId, player_id: playerId } })); }
         function useJailCard() { socket.send(JSON.stringify({ action: "use_jail_card", data: { game_id: myGameId, player_id: myPlayerId } })); }
 
-        // --- NFC FUNKTIONER ---
         function joinAsTerminal() {
             const pin = document.getElementById("pinInput").value.trim();
             if (pin.length !== 4) { playSound('error'); return alert("Indtast spillets 4-cifrede PIN kode først."); }
@@ -692,15 +675,14 @@
                         return; 
                     }
 
-                    const decoder = new TextDecoder();
-                    let scannedId = "";
+                    const decoder = new TextDecoder(); let scannedId = "";
                     for (const record of message.records) { scannedId = decoder.decode(record.data); }
 
                     if (terminalState === "offer") {
                         if (scannedId === terminalExpectedId) {
                             socket.send(JSON.stringify({ action: "accept_property", data: terminalPayload }));
                         } else {
-                            playSound('error'); updateTerminalUI("terminal-declined", "AFVIST", "❌", "Forkert Dankort! Brug det rigtige kort.");
+                            playSound('error'); updateTerminalUI("terminal-declined", "AFVIST", "❌", "Forkert Dankort!");
                             setTimeout(() => { if(terminalState==="offer") updateTerminalUI("terminal-ready", "Nyt Tilbud!", "🏡", document.getElementById("terminalMessage").innerText, terminalPayload.price); }, 3000);
                         }
                     } 
@@ -734,7 +716,6 @@
             showNotification("adminNotif", "Regning sendt til Dankortterminalen!", "success");
         }
 
-        // --- ANDRE FUNKTIONER ---
         function toggleModal(modalId) { const modal = document.getElementById(modalId); modal.style.display = modal.style.display === "none" || modal.style.display === "" ? "block" : "none"; }
         
         function executeTransfer() {
@@ -779,7 +760,6 @@
         function executePayRent() {
             if (!pendingRent) return;
             socket.send(JSON.stringify({ action: "pay_rent", data: { game_id: myGameId, from_id: myPlayerId, to_id: pendingRent.owner_id, amount: pendingRent.amount } }));
-            document.getElementById("modalOverlay").style.display = "none"; document.getElementById("rentModal").style.display = "none"; pendingRent = null;
         }
 
         function drawChanceCard() { const playerId = document.getElementById("adminPlayerSelect").value; if (!playerId) { playSound('error'); return alert("Vælg en spiller først!"); } socket.send(JSON.stringify({ action: "draw_chance_card", data: { game_id: myGameId, player_id: playerId } })); }
@@ -836,7 +816,12 @@
                         buttonsHTML = `<button class="btn btn-small" style="background: #27ae60;" onclick="unmortgageProp('${prop.name}')">Køb fri (-${cost} kr.)</button>`;
                     } else {
                         const payout = prop.price / 2;
-                        buttonsHTML = `<div style="display: flex; gap: 5px; margin-top: 10px;"><button class="btn btn-small" style="background: #c0392b; flex:1;" onclick="openRentModal('${prop.name}')">Kræv Leje!</button></div><div style="display: flex; gap: 5px; margin-top: 5px;"><button class="btn btn-small" style="background: #3498db; flex: 1;" onclick="buildHouse('${prop.name}')">Byg Hus (-1000)</button><button class="btn btn-small" style="background: #e67e22; flex: 1;" onclick="mortgageProp('${prop.name}')">Pantsæt (+${payout})</button><button class="btn btn-small btn-secondary" onclick="openSellModal('${prop.name}', ${prop.price})">Sælg</button></div>`;
+                        
+                        // NYT: TJEK OM SPILlEREN HAR MONOPOL FOR AT VISE "BYG HUS" KNAPPEN
+                        let canBuild = hasMonopoly(prop.name, myPlayerId);
+                        let buildBtnHtml = canBuild ? `<button class="btn btn-small" style="background: #3498db; flex: 1;" onclick="buildHouse('${prop.name}')">Byg Hus (-1000)</button>` : '';
+
+                        buttonsHTML = `<div style="display: flex; gap: 5px; margin-top: 10px;"><button class="btn btn-small" style="background: #c0392b; flex:1;" onclick="openRentModal('${prop.name}')">Kræv Leje!</button></div><div style="display: flex; gap: 5px; margin-top: 5px;">${buildBtnHtml}<button class="btn btn-small" style="background: #e67e22; flex: 1;" onclick="mortgageProp('${prop.name}')">Pantsæt (+${payout})</button><button class="btn btn-small btn-secondary" onclick="openSellModal('${prop.name}', ${prop.price})">Sælg</button></div>`;
                     }
                     myList.innerHTML += `<div class="${cssClass}" style="${inlineStyle}">${title} ${buttonsHTML}</div>`;
                 });

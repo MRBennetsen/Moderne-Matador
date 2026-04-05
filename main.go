@@ -51,6 +51,18 @@ func broadcast(message map[string]interface{}) {
 	}
 }
 
+// --- NYT: DEFINITION AF FARVEGRUPPER (Til Hus-tjek og Dobbelt Leje) ---
+var ColorGroups = [][]string{
+	{"Rødovrevej", "Hvidovrevej"},
+	{"Roskildevej", "Valby Langgade", "Allégade"},
+	{"Frederiksberg Allé", "Bülowsvej", "Gammel Kongevej"},
+	{"Bernstorffsvej", "Hellerupvej", "Strandvejen"},
+	{"Trianglen", "Østerbrogade", "Grønningen"},
+	{"Bredgade", "Kongens Nytorv", "Østergade"},
+	{"Amagertorv", "Vimmelskaftet", "Nygade"},
+	{"Frederiksberggade", "Rådhuspladsen"},
+}
+
 func seedProperties(gameID string) {
 	props := map[string]int{
 		"Rødovrevej": 1200, "Hvidovrevej": 1200, "Roskildevej": 2000, "Valby Langgade": 2000, "Allégade": 2400,
@@ -255,7 +267,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			playerID, _ := msg.Data["player_id"].(string)
 			amountFloat, _ := msg.Data["amount"].(float64)
 			amount := int(amountFloat)
-
 			var balance int
 			err := db.QueryRow("SELECT balance FROM players WHERE id = ? AND game_id = ? AND is_bankrupt = FALSE", playerID, gameID).Scan(&balance)
 			if err != nil {
@@ -274,7 +285,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcastLog(gameID, fmt.Sprintf("💳 %s betalte %d kr. på Dankortterminalen!", getPlayerName(playerID), amount))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 			broadcastPool(gameID)
-
 			broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "approved", "player_name": getPlayerName(playerID), "amount": amount})
 
 		case "start_game":
@@ -435,10 +445,43 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 			broadcastPool(gameID)
 
+		// --- NYT: VALIDERING AF MONOPOL FØR DER MÅ BYGGES ---
 		case "build_house":
 			gameID, _ := msg.Data["game_id"].(string)
 			propName, _ := msg.Data["property_name"].(string)
 			playerID, _ := msg.Data["player_id"].(string)
+
+			// 1. Find farvegruppen for denne ejendom
+			var group []string
+			for _, g := range ColorGroups {
+				for _, p := range g {
+					if p == propName {
+						group = g
+						break
+					}
+				}
+			}
+			if group == nil {
+				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Man kan ikke bygge huse på rederier eller bryggerier!"})
+				continue
+			}
+
+			// 2. Tjek om spilleren ejer ALLE grunde i denne gruppe
+			ownsAll := true
+			for _, p := range group {
+				var owner string
+				db.QueryRow("SELECT owner_id FROM properties WHERE game_id = ? AND property_name = ?", gameID, p).Scan(&owner)
+				if owner != playerID {
+					ownsAll = false
+					break
+				}
+			}
+			if !ownsAll {
+				conn.WriteJSON(map[string]interface{}{"event": "error", "message": "Du skal eje alle grunde af denne farve for at bygge!"})
+				continue
+			}
+
+			// 3. Udfør byggeriet hvis check er bestået
 			var houses, currentBalance int
 			db.QueryRow("SELECT houses FROM properties WHERE game_id = ? AND property_name = ?", gameID, propName).Scan(&houses)
 			db.QueryRow("SELECT balance FROM players WHERE id = ?", playerID).Scan(&currentBalance)
@@ -458,9 +501,12 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcast(map[string]interface{}{"event": "properties_updated", "game_id": gameID, "properties": getProperties(gameID)})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 
+		// --- NYT: DOBBELT LEJE VED MONOPOL UDEN HUSE ---
 		case "demand_rent":
 			gameID, _ := msg.Data["game_id"].(string)
 			propName, _ := msg.Data["property_name"].(string)
+			ownerID := msg.Data["owner_id"].(string)
+
 			var houses int
 			if err := db.QueryRow("SELECT houses FROM properties WHERE game_id = ? AND property_name = ?", gameID, propName).Scan(&houses); err != nil {
 				continue
@@ -468,8 +514,39 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if houses > 5 {
 				houses = 5
 			}
+
 			amount := RentTable[propName][houses]
-			broadcast(map[string]interface{}{"event": "rent_demanded", "game_id": gameID, "target_id": msg.Data["target_id"], "owner_id": msg.Data["owner_id"], "owner_name": msg.Data["owner_name"], "property_name": propName, "amount": amount})
+
+			// Hvis der ingen huse er, tjek om ejeren har monopol (så lejen fordobles)
+			if houses == 0 {
+				for _, g := range ColorGroups {
+					inGroup := false
+					for _, p := range g {
+						if p == propName {
+							inGroup = true
+							break
+						}
+					}
+
+					if inGroup {
+						ownsAll := true
+						for _, p := range g {
+							var o string
+							db.QueryRow("SELECT owner_id FROM properties WHERE game_id = ? AND property_name = ?", gameID, p).Scan(&o)
+							if o != ownerID {
+								ownsAll = false
+								break
+							}
+						}
+						if ownsAll {
+							amount = amount * 2
+						} // DOBBELT LEJE!
+						break
+					}
+				}
+			}
+
+			broadcast(map[string]interface{}{"event": "rent_demanded", "game_id": gameID, "target_id": msg.Data["target_id"], "owner_id": ownerID, "owner_name": msg.Data["owner_name"], "property_name": propName, "amount": amount})
 
 		case "pay_rent":
 			gameID, _ := msg.Data["game_id"].(string)
@@ -487,9 +564,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcastLog(gameID, fmt.Sprintf("🏠 %s betalte %d kr. i husleje til %s", getPlayerName(fromID), amount, getPlayerName(toID)))
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 
-			// NYT: Fortæl alle, at denne husleje er betalt (bruges til at lukke mobil-modals og opdatere terminal)
 			broadcast(map[string]interface{}{"event": "rent_paid_success", "game_id": gameID, "from_id": fromID, "to_id": toID})
-
 			conn.WriteJSON(map[string]interface{}{"event": "admin_success", "message": "Husleje betalt!"})
 
 		case "mortgage_property":
