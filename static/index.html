@@ -389,16 +389,23 @@
                 }
 
                 if (data.event === "game_started" || data.event === "reconnect_success") {
-                    if(data.game_id === myGameId) {
-                        if (data.event === "reconnect_success") { myPlayerId = data.player_id; isHost = data.is_host; }
-                        allPlayers = data.players; allProperties = data.properties || [];
-                        if (data.status === "active" || data.event === "game_started") { setupActiveGameScreens(); renderInitialLogs(data.logs); } 
-                        else if (data.status === "waiting") { 
-                            isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); 
-                            renderLobbyList(); 
-                        }
+                // NYT: Hvis det er en reconnect, skal browseren huske sit ID IGEN, før vi tjekker!
+                if (data.event === "reconnect_success") { 
+                    myGameId = data.game_id; 
+                    myPlayerId = data.player_id; 
+                    isHost = data.is_host; 
+                }
+
+                if (data.game_id === myGameId) {
+                    allPlayers = data.players; allProperties = data.properties || [];
+                    if (data.status === "active" || data.event === "game_started") { 
+                        setupActiveGameScreens(); renderInitialLogs(data.logs); 
+                    } else if (data.status === "waiting") { 
+                        isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); 
+                        renderLobbyList(); 
                     }
                 }
+            }
 
                 if (data.event === "new_log" && data.game_id === myGameId) { appendLog(data.message); }
 
