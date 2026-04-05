@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"sort"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -190,13 +191,23 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		switch msg.Action {
 
 		case "ping":
-			// Modtager heartbeat fra klienterne, så Nginx ikke lukker forbindelsen.
 			continue
+
+		case "get_history":
+			rows, _ := db.Query("SELECT substr(created_at, 1, 16), winner_name FROM games WHERE status = 'finished' ORDER BY created_at DESC LIMIT 5")
+			var history []map[string]string
+			for rows.Next() {
+				var date, winner string
+				rows.Scan(&date, &winner)
+				history = append(history, map[string]string{"date": date, "winner": winner})
+			}
+			rows.Close()
+			conn.WriteJSON(map[string]interface{}{"event": "history_data", "history": history})
 
 		case "create_game":
 			gameID := generateID()
 			pin := generatePIN()
-			db.Exec("INSERT INTO games (id, pin_code, status, parking_pool) VALUES (?, ?, ?, ?)", gameID, pin, "waiting", 0)
+			db.Exec("INSERT INTO games (id, pin_code, status, parking_pool, winner_name) VALUES (?, ?, ?, ?, ?)", gameID, pin, "waiting", 0, "")
 			seedProperties(gameID)
 			conn.WriteJSON(map[string]interface{}{"event": "game_created", "pin": pin, "game_id": gameID})
 
@@ -219,6 +230,56 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcastLog(gameID, "🏁 Spillet er startet!")
 			broadcast(map[string]interface{}{"event": "game_started", "game_id": gameID, "players": getPlayers(gameID), "properties": getProperties(gameID), "logs": getLogs(gameID)})
 			broadcastPool(gameID)
+
+		case "end_game":
+			gameID, _ := msg.Data["game_id"].(string)
+			rows, _ := db.Query("SELECT id, name, balance, is_bankrupt FROM players WHERE game_id = ?", gameID)
+
+			type PlayerResult struct {
+				Name     string `json:"name"`
+				NetWorth int    `json:"net_worth"`
+			}
+			var results []PlayerResult
+
+			for rows.Next() {
+				var pID, pName string
+				var bal int
+				var isBankrupt bool
+				rows.Scan(&pID, &pName, &bal, &isBankrupt)
+
+				if isBankrupt {
+					results = append(results, PlayerResult{Name: pName, NetWorth: 0})
+					continue
+				}
+
+				netWorth := bal
+				pRows, _ := db.Query("SELECT price, is_mortgaged, houses FROM properties WHERE game_id = ? AND owner_id = ?", gameID, pID)
+				for pRows.Next() {
+					var price, houses int
+					var mortgaged bool
+					pRows.Scan(&price, &mortgaged, &houses)
+					if mortgaged {
+						netWorth += price / 2
+					} else {
+						netWorth += price
+					}
+					netWorth += houses * 1000 // 1000 kr pr hus
+				}
+				pRows.Close()
+				results = append(results, PlayerResult{Name: pName, NetWorth: netWorth})
+			}
+			rows.Close()
+
+			sort.Slice(results, func(i, j int) bool { return results[i].NetWorth > results[j].NetWorth })
+
+			winner := "Ingen"
+			if len(results) > 0 {
+				winner = results[0].Name
+			}
+
+			db.Exec("UPDATE games SET status = 'finished', winner_name = ? WHERE id = ?", winner, gameID)
+			broadcastLog(gameID, fmt.Sprintf("🛑 Spillet blev afsluttet af Banken! %s vandt med en formue på %d kr.", winner, results[0].NetWorth))
+			broadcast(map[string]interface{}{"event": "game_ended", "game_id": gameID, "leaderboard": results, "winner": winner})
 
 		case "give_pass_start_bonus":
 			playerID, _ := msg.Data["player_id"].(string)
@@ -484,14 +545,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			broadcast(map[string]interface{}{"event": "properties_updated", "game_id": gameID, "properties": getProperties(gameID)})
 			broadcast(map[string]interface{}{"event": "players_updated", "game_id": gameID, "players": getPlayers(gameID)})
 
-			var activePlayers int
-			db.QueryRow("SELECT COUNT(*) FROM players WHERE game_id = ? AND is_bankrupt = FALSE", gameID).Scan(&activePlayers)
-			if activePlayers == 1 {
-				var winnerName string
-				db.QueryRow("SELECT name FROM players WHERE game_id = ? AND is_bankrupt = FALSE", gameID).Scan(&winnerName)
-				broadcastLog(gameID, fmt.Sprintf("🏆 SPILLET ER SLUT! %s har vundet hele lortet!", winnerName))
-				broadcast(map[string]interface{}{"event": "game_over_winner", "game_id": gameID, "winner_name": winnerName})
-			}
+			// Slettet auto-vinder kode for Fallit (nu har vi jo Slut Spil-knappen!)
 
 		case "reconnect":
 			gameID, _ := msg.Data["game_id"].(string)
@@ -539,7 +593,7 @@ func main() {
 	}
 	defer db.Close()
 	createTablesSQL := `
-	CREATE TABLE IF NOT EXISTS games (id TEXT PRIMARY KEY, pin_code TEXT, status TEXT, parking_pool INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+	CREATE TABLE IF NOT EXISTS games (id TEXT PRIMARY KEY, pin_code TEXT, status TEXT, parking_pool INTEGER DEFAULT 0, winner_name TEXT DEFAULT '', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
 	CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, game_id TEXT, name TEXT, balance INTEGER, in_jail BOOLEAN DEFAULT FALSE, get_out_of_jail_cards INTEGER DEFAULT 0, is_bankrupt BOOLEAN DEFAULT FALSE);
 	CREATE TABLE IF NOT EXISTS properties (id TEXT PRIMARY KEY, game_id TEXT, property_name TEXT, price INTEGER, owner_id TEXT, houses INTEGER DEFAULT 0, is_mortgaged BOOLEAN DEFAULT FALSE);
 	CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT, message TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);`

@@ -10,61 +10,44 @@
             --border-color: #dddddd; --input-bg: #ffffff; --input-text: #333333; --list-bg: #ecf0f1;
             --yellow-bg: #fdfae6; --yellow-border: #f1c40f; --log-bg: #ffffff; --prop-mortgaged-bg: #fdfdfd;
         }
-
         body.dark-mode {
             --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --text-muted: #95a5a6;
             --border-color: #444444; --input-bg: #2a2a2a; --input-text: #e0e0e0; --list-bg: #2c2c2c;
             --yellow-bg: #3a3314; --yellow-border: #8c7300; --log-bg: #1e1e1e; --prop-mortgaged-bg: #2c2c2c;
         }
-
         body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; transition: background 0.3s, color 0.3s; }
         .card { background: var(--card-bg); padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; width: 100%; max-width: 400px; display: none; max-height: 90vh; overflow-y: auto; position: relative; transition: background 0.3s; }
         .active-card { display: block; }
         h1, h2, h3, h4 { color: var(--text-color); margin-top: 0; }
-        
         .btn { background: #27ae60; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; transition: opacity 0.2s; margin-top: 10px; }
         .btn:hover { opacity: 0.8; }
         .btn-secondary { background: #34495e; }
         .btn-small { padding: 8px 12px; font-size: 14px; margin-top: 5px; width: auto; }
-        
         input, select { width: 100%; padding: 12px; margin-top: 10px; margin-bottom: 10px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box; font-family: inherit; background: var(--input-bg); color: var(--input-text); transition: background 0.3s, color 0.3s; }
         .pin-display { font-size: 48px; letter-spacing: 8px; color: #e74c3c; font-weight: bold; margin: 20px 0; background: var(--yellow-bg); padding: 10px; border-radius: 8px; border: 2px solid var(--yellow-border);}
-        
         .player-list { list-style: none; padding: 0; margin-top: 20px; text-align: left;}
         .player-list li { background: var(--list-bg); padding: 10px; margin-bottom: 8px; border-radius: 6px; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; transition: background 0.3s;}
-        
         .notification { color: white; padding: 10px; border-radius: 6px; margin-bottom: 15px; display: none; font-weight: bold; }
         .notif-success { background: #2ecc71; }
         .notif-error { background: #c0392b; animation: shake 0.4s; }
-
         .modal-box { display: none; background: var(--card-bg); padding: 20px; border-radius: 8px; margin-top: 15px; border: 2px solid var(--border-color); transition: background 0.3s; }
         .prop-item { background: var(--card-bg); padding: 15px; border-radius: 6px; border-left: 5px solid #2980b9; margin-bottom: 10px; text-align: left; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border: 1px solid var(--border-color); border-left: 5px solid #2980b9; }
         .prop-mortgaged { border-left: 5px solid #95a5a6; background: var(--prop-mortgaged-bg); color: var(--text-muted); }
-        
         .center-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--card-bg); padding: 30px; border-radius: 16px; z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.5); width: 90%; max-width: 350px; text-align: center; display: none; }
         #offerModal { border: 4px solid #f1c40f; }
         #rentModal { border: 4px solid #e74c3c; }
         #chanceModal { border: 4px solid #8e44ad; background: var(--yellow-bg); animation: popIn 0.5s ease-out;}
         .chance-icon { font-size: 60px; margin-bottom: 10px; }
-
         #modalOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 999; display: none; }
         .price-tag { font-size: 20px; font-weight: bold; color: #27ae60; margin: 5px 0; text-align: center; }
         #jailBanner { display: none; background: #c0392b; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 20px; text-align: center; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); border: 2px solid #922b21; }
-
         .log-container { background: var(--log-bg); border: 2px solid var(--border-color); border-radius: 8px; padding: 10px; margin-top: 20px; text-align: left; height: 150px; overflow-y: auto; transition: background 0.3s;}
         .log-list { list-style: none; padding: 0; margin: 0; font-size: 14px; color: var(--text-color); line-height: 1.6; }
         .log-list li { border-bottom: 1px solid var(--border-color); padding-bottom: 4px; margin-bottom: 4px; }
-
         .pool-banner { background: #f1c40f; color: #2c3e50; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 18px; display: none; border: 2px solid #f39c12; }
-
         #gameOverOverlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); color: white; border-radius: 12px; z-index: 50; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
-        #gameOverOverlay h1 { color: #e74c3c; font-size: 48px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
-        
-        #winnerOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(241, 196, 15, 0.95); color: #2c3e50; z-index: 2000; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
-
         #themeToggle { position: fixed; top: 15px; right: 15px; background: transparent; border: none; font-size: 28px; cursor: pointer; z-index: 1000; transition: transform 0.2s;}
         #themeToggle:hover { transform: scale(1.2); }
-
         @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
         @keyframes popIn { 0% { transform: translate(-50%, -40%) scale(0.8); opacity: 0;} 100% { transform: translate(-50%, -50%) scale(1); opacity: 1;} }
     </style>
@@ -72,13 +55,16 @@
 <body>
 
     <button id="themeToggle" onclick="toggleDarkMode()">🌙</button>
-
     <div id="modalOverlay"></div>
     
-    <div id="winnerOverlay">
-        <h1 style="font-size: 60px; margin-bottom: 10px; color: #2c3e50;">🏆 SEJR!</h1>
-        <h2 id="winnerText" style="font-size: 30px; color: #2c3e50;">...</h2>
-        <p style="font-size: 20px; font-weight: bold; color: #2c3e50;">Alle andre er gået fallit.</p>
+    <div id="leaderboardOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(44, 62, 80, 0.98); color: white; z-index: 3000; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+        <h1 style="font-size: 50px; margin-bottom: 10px; color: #f1c40f;">🛑 SPILLET ER SLUT!</h1>
+        <h2 style="margin-bottom: 30px;">Vinder: <span id="lbWinner">...</span></h2>
+        <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; text-align: left;">
+            <h3 style="margin-top: 0; border-bottom: 1px solid #7f8c8d; padding-bottom: 10px;">Samlet Værdi (Penge + Ejendom)</h3>
+            <ul id="lbList" style="list-style: none; padding: 0; font-size: 18px; line-height: 1.8;"></ul>
+        </div>
+        <button class="btn" style="background: #e74c3c; width: 90%; max-width: 400px; margin-top: 30px;" onclick="forceReset()">Tilbage til Start</button>
     </div>
 
     <div id="offerModal" class="center-modal">
@@ -121,16 +107,21 @@
         <button class="btn" onclick="joinGame()" id="joinBtn" disabled>Join Spil</button>
         <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
         <button class="btn btn-secondary" onclick="createGame()" id="createBtn" disabled>Opret Nyt Spil (Admin)</button>
+        <button class="btn btn-secondary btn-small" style="width: 100%; margin-top: 10px; background: transparent; color: var(--text-color); border: 2px solid var(--border-color);" onclick="getHistory()">Vis Tidligere Spil 📜</button>
+
+        <div id="historyModal" class="modal-box" style="text-align: left;">
+            <h3 style="margin-top:0;">📜 Seneste 5 Spil</h3>
+            <ul id="historyList" style="list-style: none; padding: 0; margin: 0; font-size: 16px;"></ul>
+            <button class="btn btn-secondary" style="margin-top: 15px; width: 100%; padding: 10px;" onclick="toggleModal('historyModal')">Luk</button>
+        </div>
     </div>
 
     <div class="card" id="lobbyScreen">
         <h1>Lobby</h1>
         <p>PIN-kode:</p>
         <div class="pin-display" id="pinCode">----</div>
-        
         <p style="font-size: 14px; color: var(--text-muted); margin-top: -10px;">Scan for at joine direkte:</p>
         <img id="qrCodeImage" src="" alt="QR Kode" style="margin-bottom: 15px; border-radius: 8px; display: none;">
-        
         <p>Venter på spillere...</p>
         <ul class="player-list" id="lobbyPlayers"></ul>
         <button class="btn" onclick="startGame()" style="margin-top: 20px;">Start Spillet!</button>
@@ -169,6 +160,7 @@
 
         <h3 style="text-align: left;">Aktuelle Saldi:</h3>
         <ul class="player-list" id="adminPlayerList"></ul>
+        <button class="btn" style="background: transparent; color: #e74c3c; border: 2px solid #e74c3c; width: 100%; margin-top: 15px; padding: 12px; font-size: 16px;" onclick="endGame()">🛑 Afslut Spil & Find Vinder</button>
 
         <div class="log-container">
             <h4 style="margin: 0 0 10px 0; color: var(--text-muted);">📜 Live Aktivitetslog</h4>
@@ -366,12 +358,18 @@
             socket.onmessage = function(event) {
                 const data = JSON.parse(event.data);
 
+                if (data.event === "history_data") {
+                    const list = document.getElementById("historyList"); list.innerHTML = "";
+                    if(data.history && data.history.length > 0) {
+                        data.history.forEach(h => { list.innerHTML += `<li style="padding: 10px; border-bottom: 1px solid var(--border-color);">Dato: ${h.date}<br>Vinder: <b style="color: #f39c12;">${h.winner}</b></li>`; });
+                    } else { list.innerHTML = "<li>Ingen afsluttede spil endnu.</li>"; }
+                    toggleModal('historyModal');
+                }
+
                 if (data.event === "game_created") {
                     isHost = true; myGameId = data.game_id;
                     localStorage.setItem("matador_gameId", myGameId); localStorage.setItem("matador_isHost", "true");
-                    showScreen(document.getElementById("lobbyScreen")); 
-                    document.getElementById("pinCode").innerText = data.pin;
-
+                    showScreen(document.getElementById("lobbyScreen")); document.getElementById("pinCode").innerText = data.pin;
                     const joinUrl = `https://matador.bennetsen.dk/?pin=${data.pin}`;
                     document.getElementById("qrCodeImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(joinUrl)}`;
                     document.getElementById("qrCodeImage").style.display = "inline-block";
@@ -389,42 +387,40 @@
                 }
 
                 if (data.event === "game_started" || data.event === "reconnect_success") {
-                // NYT: Hvis det er en reconnect, skal browseren huske sit ID IGEN, før vi tjekker!
-                if (data.event === "reconnect_success") { 
-                    myGameId = data.game_id; 
-                    myPlayerId = data.player_id; 
-                    isHost = data.is_host; 
-                }
-
-                if (data.game_id === myGameId) {
-                    allPlayers = data.players; allProperties = data.properties || [];
-                    if (data.status === "active" || data.event === "game_started") { 
-                        setupActiveGameScreens(); renderInitialLogs(data.logs); 
-                    } else if (data.status === "waiting") { 
-                        isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); 
-                        renderLobbyList(); 
+                    if (data.event === "reconnect_success") { myGameId = data.game_id; myPlayerId = data.player_id; isHost = data.is_host; }
+                    if (data.game_id === myGameId) {
+                        allPlayers = data.players; allProperties = data.properties || [];
+                        if (data.status === "active" || data.event === "game_started") { setupActiveGameScreens(); renderInitialLogs(data.logs); } 
+                        else if (data.status === "waiting") { isHost ? showScreen(document.getElementById("lobbyScreen")) : showScreen(document.getElementById("playerWaitScreen")); renderLobbyList(); }
                     }
                 }
-            }
 
                 if (data.event === "new_log" && data.game_id === myGameId) { appendLog(data.message); }
 
                 if (data.event === "pool_updated" && data.game_id === myGameId) {
-                    document.querySelectorAll(".poolAmount").forEach(el => el.innerText = formatMoney(data.pool));
-                    document.querySelectorAll(".pool-banner").forEach(el => el.style.display = "block");
+                    document.querySelectorAll(".poolAmount").forEach(el => el.innerText = formatMoney(data.pool)); document.querySelectorAll(".pool-banner").forEach(el => el.style.display = "block");
                 }
                 
                 if (data.event === "pool_won" && data.game_id === myGameId && data.target_id === myPlayerId) {
-                    playSound('cash'); triggerConfetti(); triggerConfetti();
-                    showNotification("playerNotif", `🚗 TILLYKKE! Du vandt Bødekassen på ${formatMoney(data.amount)}!`, "success");
+                    playSound('cash'); triggerConfetti(); triggerConfetti(); showNotification("playerNotif", `🚗 TILLYKKE! Du vandt Bødekassen på ${formatMoney(data.amount)}!`, "success");
                 }
 
-                if (data.event === "game_over_winner" && data.game_id === myGameId) {
+                // NYT: LEADERBOARD VISES NÅR BANKEN AFSLUTTER SPILLET
+                if (data.event === "game_ended" && data.game_id === myGameId) {
                     playSound('cash');
-                    document.getElementById("winnerText").innerText = `${data.winner_name} ejer nu ALT!`;
-                    document.getElementById("winnerOverlay").style.display = "flex";
+                    document.getElementById("lbWinner").innerText = data.winner;
+                    const list = document.getElementById("lbList");
+                    list.innerHTML = "";
+                    data.leaderboard.forEach((p, i) => {
+                        let medal = i === 0 ? "🥇" : (i === 1 ? "🥈" : (i === 2 ? "🥉" : "👤"));
+                        list.innerHTML += `<li style="padding: 5px 0;">${medal} <b>${p.name}</b>: <span style="float:right;">${formatMoney(p.net_worth)}</span></li>`;
+                    });
+                    document.getElementById("leaderboardOverlay").style.display = "flex";
                     if (!winnerInterval) winnerInterval = setInterval(triggerConfetti, 2500);
                     triggerConfetti(); triggerConfetti(); triggerConfetti();
+                    
+                    // Slet session, så brugerne kan trykke "Tilbage til Start" uden at blive tvunget ind i spillet igen.
+                    localStorage.removeItem("matador_gameId"); localStorage.removeItem("matador_playerId"); localStorage.removeItem("matador_isHost");
                 }
 
                 if (data.event === "reconnect_failed") {
@@ -441,9 +437,7 @@
                     else showNotification("playerNotif", data.message, "success");
                 }
 
-                if (data.event === "players_updated" && data.game_id === myGameId) {
-                    allPlayers = data.players; setupActiveGameScreens(); 
-                }
+                if (data.event === "players_updated" && data.game_id === myGameId) { allPlayers = data.players; setupActiveGameScreens(); }
 
                 if (data.event === "property_offered" && data.game_id === myGameId) {
                     if (!isHost && data.buyer_id === myPlayerId) {
@@ -458,9 +452,7 @@
                     if (!isHost && data.buyer_id === myPlayerId) { playSound('cash'); triggerConfetti(); showNotification("playerNotif", `🎉 Tillykke! Du ejer nu ${data.property_name}`, "success"); }
                 }
 
-                if (data.event === "properties_updated" && data.game_id === myGameId) {
-                    allProperties = data.properties; renderProperties();
-                }
+                if (data.event === "properties_updated" && data.game_id === myGameId) { allProperties = data.properties; renderProperties(); }
 
                 if (data.event === "rent_demanded" && data.game_id === myGameId) {
                     if (!isHost && data.target_id === myPlayerId) {
@@ -472,34 +464,26 @@
 
                 if (data.event === "chance_card_drawn" && data.game_id === myGameId) {
                     if (!isHost && data.target_id === myPlayerId) {
-                        if (data.is_positive) { playSound('cash'); triggerConfetti(); }
-                        else if (data.card_text.includes("fængsel")) { playSound('jail'); }
-                        document.getElementById("chanceText").innerText = data.card_text;
-                        document.getElementById("modalOverlay").style.display = "block"; document.getElementById("chanceModal").style.display = "block";
+                        if (data.is_positive) { playSound('cash'); triggerConfetti(); } else if (data.card_text.includes("fængsel")) { playSound('jail'); }
+                        document.getElementById("chanceText").innerText = data.card_text; document.getElementById("modalOverlay").style.display = "block"; document.getElementById("chanceModal").style.display = "block";
                     } else if (isHost) { showNotification("adminNotif", "Kortet er trukket!", "success"); }
                 }
 
                 if (data.event === "error") {
                     playSound('error');
-                    if (isHost) { showNotification("adminErrorNotif", data.message, "error"); } 
-                    else { showNotification("playerErrorNotif", data.message, "error"); document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none"; }
+                    if (isHost) { showNotification("adminErrorNotif", data.message, "error"); } else { showNotification("playerErrorNotif", data.message, "error"); document.getElementById("modalOverlay").style.display = "none"; document.getElementById("offerModal").style.display = "none"; }
                 }
             };
 
             socket.onclose = function(e) {
                 clearInterval(pingInterval);
-                console.log("Forbindelse mistet. Prøver at genoprette...");
-                document.getElementById("connStatus").innerText = "Forbindelse mistet! Genopretter... 🔴";
-                document.getElementById("connStatus").style.color = "#c0392b";
+                document.getElementById("connStatus").innerText = "Forbindelse mistet! Genopretter... 🔴"; document.getElementById("connStatus").style.color = "#c0392b";
                 setTimeout(connectWebSocket, 3000);
             };
 
-            socket.onerror = function(err) {
-                socket.close(); 
-            };
+            socket.onerror = function(err) { socket.close(); };
         }
 
-        // Init the connection
         connectWebSocket();
 
         function renderLobbyList() {
@@ -509,8 +493,7 @@
 
         function updateAdminPropPrice() {
             const propName = document.getElementById("adminPropSelect").value; const prop = allProperties.find(p => p.name === propName);
-            if (prop) { selectedPropPrice = prop.price; document.getElementById("adminPropPriceDisplay").innerText = formatMoney(prop.price); } 
-            else { selectedPropPrice = 0; document.getElementById("adminPropPriceDisplay").innerText = "0 kr."; }
+            if (prop) { selectedPropPrice = prop.price; document.getElementById("adminPropPriceDisplay").innerText = formatMoney(prop.price); } else { selectedPropPrice = 0; document.getElementById("adminPropPriceDisplay").innerText = "0 kr."; }
         }
 
         function renderProperties() {
@@ -532,16 +515,7 @@
                             buttonsHTML = `<button class="btn btn-small" style="background: #27ae60;" onclick="unmortgageProp('${prop.name}')">Køb fri (-${cost} kr.)</button>`;
                         } else {
                             const payout = prop.price / 2;
-                            buttonsHTML = `
-                                <div style="display: flex; gap: 5px; margin-top: 10px;">
-                                    <button class="btn btn-small" style="background: #c0392b; flex:1;" onclick="openRentModal('${prop.name}')">Kræv Leje!</button>
-                                </div>
-                                <div style="display: flex; gap: 5px; margin-top: 5px;">
-                                    <button class="btn btn-small" style="background: #3498db; flex: 1;" onclick="buildHouse('${prop.name}')">Byg Hus (-1000)</button>
-                                    <button class="btn btn-small" style="background: #e67e22; flex: 1;" onclick="mortgageProp('${prop.name}')">Pantsæt (+${payout})</button>
-                                    <button class="btn btn-small btn-secondary" onclick="openSellModal('${prop.name}', ${prop.price})">Sælg</button>
-                                </div>
-                            `;
+                            buttonsHTML = `<div style="display: flex; gap: 5px; margin-top: 10px;"><button class="btn btn-small" style="background: #c0392b; flex:1;" onclick="openRentModal('${prop.name}')">Kræv Leje!</button></div><div style="display: flex; gap: 5px; margin-top: 5px;"><button class="btn btn-small" style="background: #3498db; flex: 1;" onclick="buildHouse('${prop.name}')">Byg Hus (-1000)</button><button class="btn btn-small" style="background: #e67e22; flex: 1;" onclick="mortgageProp('${prop.name}')">Pantsæt (+${payout})</button><button class="btn btn-small btn-secondary" onclick="openSellModal('${prop.name}', ${prop.price})">Sælg</button></div>`;
                         }
                         myList.innerHTML += `<div class="${cssClass}">${title} ${buttonsHTML}</div>`;
                     }
@@ -584,10 +558,7 @@
                 transferSelect.innerHTML = '<option value="bank">🏦 Banken</option>'; sellSelect.innerHTML = '<option value="">-- Vælg Køber --</option>'; rentSelect.innerHTML = '<option value="">-- Hvem landede på grunden? --</option>'; bankruptSelect.innerHTML = '<option value="bank">🏦 Banken</option>';
                 
                 allPlayers.forEach(p => { 
-                    if (p.id !== myPlayerId && !p.is_bankrupt) { 
-                        transferSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; sellSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; 
-                        rentSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; bankruptSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`;
-                    }
+                    if (p.id !== myPlayerId && !p.is_bankrupt) { transferSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; sellSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; rentSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; bankruptSelect.innerHTML += `<option value="${p.id}">👤 ${p.name}</option>`; }
                 });
                 renderProperties();
             }
@@ -595,6 +566,7 @@
 
         function showNotification(elId, txt, type) { const el = document.getElementById(elId); el.innerText = txt; el.style.display = "block"; setTimeout(() => el.style.display = "none", 4000); }
         
+        function getHistory() { initAudio(); socket.send(JSON.stringify({ action: "get_history", data: {} })); }
         function createGame() { initAudio(); socket.send(JSON.stringify({ action: "create_game", data: {} })); }
         function joinGame() { 
             initAudio(); 
@@ -668,6 +640,13 @@
                 const targetId = document.getElementById("bankruptToPlayer").value;
                 socket.send(JSON.stringify({ action: "declare_bankruptcy", data: { game_id: myGameId, player_id: myPlayerId, target_id: targetId } }));
                 toggleModal('bankruptModal');
+            }
+        }
+
+        // NYT: Banken kan gennemtvinge en afslutning og kåre vinderen ud fra Total Værdi
+        function endGame() {
+            if(confirm("Er du sikker? Dette vil afslutte spillet og kåre en vinder baseret på samlet værdi (penge + grunde + huse)!")) {
+                socket.send(JSON.stringify({ action: "end_game", data: { game_id: myGameId } }));
             }
         }
 
