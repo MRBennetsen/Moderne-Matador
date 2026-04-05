@@ -224,7 +224,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			conn.WriteJSON(map[string]interface{}{"event": "join_success", "player_id": playerID, "game_id": gameID, "name": playerName})
 			broadcast(map[string]interface{}{"event": "player_joined", "game_id": gameID, "player_id": playerID, "player_name": playerName})
 
-		// --- NYT: Logik til at joine som terminal ---
 		case "join_terminal":
 			pin, _ := msg.Data["pin"].(string)
 			var gameID string
@@ -234,21 +233,36 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			conn.WriteJSON(map[string]interface{}{"event": "terminal_joined", "game_id": gameID})
 
-		// --- NYT: Admin sender regning til Terminalen ---
 		case "activate_terminal":
 			gameID, _ := msg.Data["game_id"].(string)
 			amountFloat, _ := msg.Data["amount"].(float64)
 			message, _ := msg.Data["message"].(string)
 			broadcast(map[string]interface{}{"event": "terminal_activated", "game_id": gameID, "amount": int(amountFloat), "message": message})
 
-		// --- NYT: Terminalen melder tilbage at NFC kortet er scannet ---
+		// --- NYT: Admin beder terminalen om at gøre klar til at KODE et kort ---
+		case "terminal_write_request":
+			gameID, _ := msg.Data["game_id"].(string)
+			playerID, _ := msg.Data["player_id"].(string)
+			playerName := getPlayerName(playerID)
+			broadcast(map[string]interface{}{
+				"event":       "terminal_write_mode",
+				"game_id":     gameID,
+				"player_id":   playerID,
+				"player_name": playerName,
+			})
+
+		// --- NYT: Terminalen melder tilbage, at kortet nu ER KODET succesfuldt ---
+		case "terminal_write_success":
+			gameID, _ := msg.Data["game_id"].(string)
+			playerName, _ := msg.Data["player_name"].(string)
+			broadcastLog(gameID, fmt.Sprintf("💳 Et fysisk Dankort blev udstedt til %s!", playerName))
+
 		case "terminal_payment":
 			gameID, _ := msg.Data["game_id"].(string)
 			playerID, _ := msg.Data["player_id"].(string)
 			amountFloat, _ := msg.Data["amount"].(float64)
 			amount := int(amountFloat)
 
-			// Tjekker om kortets ID overhovedet findes i dette spil
 			var balance int
 			err := db.QueryRow("SELECT balance FROM players WHERE id = ? AND game_id = ? AND is_bankrupt = FALSE", playerID, gameID).Scan(&balance)
 			if err != nil {
@@ -257,11 +271,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if balance < amount {
-				broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "declined", "message": fmt.Sprintf("Afvist! %s har ikke penge nok.", getPlayerName(playerID))})
+				broadcast(map[string]interface{}{"event": "terminal_result", "game_id": gameID, "status": "declined", "message": fmt.Sprintf("Afvist! %s har ikke råd.", getPlayerName(playerID))})
 				continue
 			}
 
-			// Gennemfør betaling (fra Spiller -> Bødekasse, eller bare ud i intetheden. Her lader vi det gå til Bødekassen for sjov!)
 			db.Exec("UPDATE players SET balance = balance - ? WHERE id = ?", amount, playerID)
 			db.Exec("UPDATE games SET parking_pool = parking_pool + ? WHERE id = ?", amount, gameID)
 
